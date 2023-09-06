@@ -144,6 +144,7 @@ class DataIo : public CloudUtility<PointT>
     }
 
     //Brief: Read the point cloud data of various format
+    //读取各种数据格式的点云数据
     bool read_cloud_file(const std::string &fileName, typename pcl::PointCloud<PointT>::Ptr &pointCloud)
     {
         std::chrono::steady_clock::time_point tic = std::chrono::steady_clock::now();
@@ -1733,6 +1734,7 @@ class DataIo : public CloudUtility<PointT>
     {
         if (read_cloud_file(in_block->filename, in_block->pc_raw))
         {
+            //根据点云， 得到点云的包围盒和中心点
             this->get_cloud_bbx_cpt(in_block->pc_raw, in_block->local_bound, in_block->local_cp);
 
             if (normalize_intensity_or_not)

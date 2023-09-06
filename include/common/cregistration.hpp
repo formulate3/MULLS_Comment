@@ -1177,17 +1177,21 @@ class CRegistration : public CloudUtility<PointT>
 		typename pcl::PointCloud<PointT>::Ptr pc_vertex_sc(new pcl::PointCloud<PointT>);
 		typename pcl::PointCloud<PointT>::Ptr pc_vertex_tc(new pcl::PointCloud<PointT>);
 
+        //1.将两帧点云从数据结构中提取出不同特征点的指针
 		registration_cons.block1->clone_feature(pc_ground_tc, pc_pillar_tc, pc_beam_tc, pc_facade_tc, pc_roof_tc, pc_vertex_tc, false);			   //target (would not change any more during the iteration)
 		registration_cons.block2->clone_feature(pc_ground_sc, pc_pillar_sc, pc_beam_sc, pc_facade_sc, pc_roof_sc, pc_vertex_sc, !use_more_points); //source (point cloud used for a specific iteration)
-
-		batch_transform_feature_points(pc_ground_sc, pc_pillar_sc, pc_beam_sc, pc_facade_sc, pc_roof_sc, pc_vertex_sc, initial_guess); //apply initial guess
+        //2.将当前帧的结果根据初始值变换到世界坐标系
+		batch_transform_feature_points(pc_ground_sc, pc_pillar_sc, pc_beam_sc, pc_facade_sc, pc_roof_sc, pc_vertex_sc,
+                                       initial_guess); //apply initial guess
         
 		//Filter the point cloud laying far away from the overlapping region
+        //3.
 		if (apply_intersection_filter && !apply_motion_undistortion_while_registration)
 			intersection_filter(registration_cons, pc_ground_tc, pc_pillar_tc, pc_beam_tc, pc_facade_tc, pc_roof_tc, pc_vertex_tc,
 								pc_ground_sc, pc_pillar_sc, pc_beam_sc, pc_facade_sc, pc_roof_sc, pc_vertex_sc);
 
 		//Downsample source cloud if its point number is larger than target's
+        //4.对source cloud进行将采样
 		if (keep_less_source_points && !apply_motion_undistortion_while_registration)
 			keep_less_source_pts(pc_ground_tc, pc_pillar_tc, pc_beam_tc, pc_facade_tc, pc_roof_tc, pc_vertex_tc,
 								 pc_ground_sc, pc_pillar_sc, pc_beam_sc, pc_facade_sc, pc_roof_sc, pc_vertex_sc);
@@ -2912,13 +2916,14 @@ class CRegistration : public CloudUtility<PointT>
 		cfilter.get_cloud_bbx(pc_ground_sc, source_init_guess_bbxs[0]);
 		cfilter.get_cloud_bbx(pc_pillar_sc, source_init_guess_bbxs[1]);
 		cfilter.get_cloud_bbx(pc_facade_sc, source_init_guess_bbxs[2]);
-		cfilter.merge_bbx(source_init_guess_bbxs, source_init_guess_bbx_merged);
+		cfilter.merge_bbx(source_init_guess_bbxs, source_init_guess_bbx_merged);//求所有box的并集
+        //
 		cfilter.get_intersection_bbx(registration_cons.block1->local_bound, source_init_guess_bbx_merged, intersection_bbx, bbx_pad);
 		cfilter.get_cloud_pair_intersection(intersection_bbx,
 											pc_ground_tc, pc_pillar_tc, pc_beam_tc, pc_facade_tc, pc_roof_tc, pc_vertex_tc,
 											pc_ground_sc, pc_pillar_sc, pc_beam_sc, pc_facade_sc, pc_roof_sc, pc_vertex_sc);
 		LOG(INFO) << "Intersection local bounding box filtering done";
-    return true;
+        return true;
 	}
 
 	//Coordinate system covertation related functions

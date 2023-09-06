@@ -230,10 +230,11 @@ struct pose_qua_t //copyright: Jingwei Li
 typedef std::vector<pose_qua_t, Eigen::aligned_allocator<pose_qua_t>> pose_quas;
 
 //Basic processing unit(node)
+//这个数据结构保存的是一帧数据的所有信息
 struct cloudblock_t
 {
 	//Strip (transaction) should be the container of the cloudblock while cloudblock can act as either a frame or submap (local map)
-	int unique_id;		  //Unique ID
+	int unique_id;		  //Unique ID 帧的序号
 	int strip_id;		  //Strip ID
 	int id_in_strip;	  //ID in the strip
 	int last_frame_index; //last_frame_id is the frame index (not unique_id) of the last frame of the submap
@@ -247,8 +248,8 @@ struct cloudblock_t
 	centerpoint_t station;		  //Station position in geo-coordinate system
 	Eigen::Matrix4d station_pose; //Station pose in geo-coordinate system
 
-	bounds_t local_bound;				//Bounding Box in local coordinate system
-	centerpoint_t local_cp;				//Center Point in local coordinate system
+	bounds_t local_bound;				//车体系下的点云的包围盒Bounding Box in local coordinate system
+	centerpoint_t local_cp;				//车体系下的包围盒的中心Center Point in local coordinate system
 	centerpoint_t local_station;		//Station position in local coordinate system
 	Eigen::Matrix4d local_station_pose; //Station pose in local coordinate system
 
@@ -274,7 +275,7 @@ struct cloudblock_t
 	pcTPtr pc_raw;
 
 	//Downsampled point cloud
-	pcTPtr pc_down;
+	pcTPtr pc_down;//下采样之后的点云
 	pcTPtr pc_sketch; //very sparse point cloud
 
 	pcTPtr pc_raw_w; //in world coordinate system (for lidar odometry)
@@ -814,6 +815,7 @@ class CloudUtility
 	}
 
 	//Get Bound of a Point Cloud
+    //获取点云的包围盒
 	void get_cloud_bbx(const typename pcl::PointCloud<PointT>::Ptr &cloud, bounds_t &bound)
 	{
 		double min_x = DBL_MAX;
@@ -822,7 +824,7 @@ class CloudUtility
 		double max_x = -DBL_MAX;
 		double max_y = -DBL_MAX;
 		double max_z = -DBL_MAX;
-
+        //
 		for (int i = 0; i < cloud->points.size(); i++)
 		{
 			if (min_x > cloud->points[i].x)
@@ -847,6 +849,7 @@ class CloudUtility
 	}
 
 	//Get Bound and Center of a Point Cloud
+    //输入点云， 输出点云的包围盒和中心点
 	void get_cloud_bbx_cpt(const typename pcl::PointCloud<PointT>::Ptr &cloud, bounds_t &bound, centerpoint_t &cp)
 	{
 		get_cloud_bbx(cloud, bound);

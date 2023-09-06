@@ -262,13 +262,19 @@ int main(int argc, char **argv)
     float dynamic_removal_radius = FLAGS_dynamic_removal_radius;
     float dynamic_dist_thre_min = FLAGS_dynamic_dist_thre_min;
     bool loop_closure_detection_on = FLAGS_loop_closure_detection_on;
+    //之前的代码用于读取参数配置
 
+
+
+    //非常重要的几个数据结构！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！
     DataIo<Point_T> dataio;
     MapViewer<Point_T> mviewer(0.0, 1, 0, 1, 0, FLAGS_vis_intensity_scale, FLAGS_vis_initial_color_type, FLAGS_laser_vis_size); //downsampling ratio //N.B. default: map_viewer on, feature_viewer on, or the others off for the initialization
-    CFilter<Point_T> cfilter;
+        CFilter<Point_T> cfilter;
     CRegistration<Point_T> creg;
     MapManager mmanager;
+    //位姿变换相关的函数
     Navigation nav;
+    //用于回环检测和优化
     Constraint_Finder confinder;
     GlobalOptimize pgoptimizer;
 
@@ -327,7 +333,7 @@ int main(int argc, char **argv)
     constraint_t scan2history_reg_con;
     constraints pgo_edges;
     Eigen::Matrix4d initial_guess_tran = Eigen::Matrix4d::Identity();
-    Eigen::Matrix4d adjacent_pose_out = Eigen::Matrix4d::Identity();
+    Eigen::Matrix4d adjacent_pose_out = Eigen::Matrix4d::Identity();//两个frame之间的相对位姿态
     Eigen::Matrix4d first_frame_body = Eigen::Matrix4d::Identity();
     LOG(WARNING) << "[" << omp_get_max_threads() << "] threads availiable in total";
 
@@ -336,7 +342,7 @@ int main(int argc, char **argv)
     float accu_tran = 0.0, accu_rot_deg = 0.0, current_linear_velocity=0.0, current_angular_velocity =0.0, add_length=0.0, roi_min_y = 0.0, roi_max_y = 0.0;
     float non_max_suppresssion_radius = 0.25 * pca_neigh_r;
 
-    if (FLAGS_motion_compensation_method > 0)
+    if (FLAGS_motion_compensation_method > 0)//是否对激光进行畸变矫正
         motion_com_while_reg_on = true;
     cblock_target->filename = filenames[0];
     cblock_target->unique_id = FLAGS_frame_num_begin;
@@ -347,19 +353,25 @@ int main(int argc, char **argv)
     dataio.write_lo_pose_overwrite(cblock_target->pose_lo, output_lo_lidar_pose_file);
     dataio.write_lo_pose_overwrite(cblock_target->pose_gt, output_gt_lidar_pose_file);
     dataio.write_lo_pose_overwrite(first_frame_body, output_lo_body_pose_file);
-    poses_lo_body_cs.push_back(first_frame_body);
-    poses_lo_lidar_cs.push_back(cblock_target->pose_lo);
+
+    poses_lo_body_cs.push_back(first_frame_body);//等于单位矩阵
+    poses_lo_lidar_cs.push_back(cblock_target->pose_lo);//等于单位矩阵
     if (FLAGS_gt_in_lidar_frame)
         poses_gt_lidar_cs[0] = cblock_target->pose_gt;
     else
         poses_gt_lidar_cs.push_back(cblock_target->pose_gt);
-    dataio.read_pc_cloud_block(cblock_target);
+
+    dataio.read_pc_cloud_block(cblock_target);//根据文件读取点云， 得到点云的包围盒和中心点
 
     std::chrono::steady_clock::time_point tic_feature_extraction_init = std::chrono::steady_clock::now();
+    //默认不进入这个条件,根据xy方向上距离的百分比进行滤波
     if (FLAGS_apply_dist_filter)
         cfilter.dist_filter(cblock_target->pc_raw, FLAGS_min_dist_used, FLAGS_max_dist_used);
+    //默认不进入这个条件
     if (FLAGS_vertical_ang_calib_on) //intrinsic angle correction
         cfilter.vertical_intrinsic_calibration(cblock_target->pc_raw, FLAGS_vertical_ang_correction_deg);
+
+
     cfilter.extract_semantic_pts(cblock_target, FLAGS_cloud_down_res, gf_grid_resolution, gf_max_grid_height_diff,
                                  gf_neighbor_height_diff, FLAGS_gf_max_h, ground_down_rate,
                                  nonground_down_rate, pca_neigh_r, pca_neigh_k,
@@ -382,6 +394,7 @@ int main(int argc, char **argv)
     for (int k = 0; k < 3; k++) //for the first frame, we only extract its feature points
         timing_array[0].push_back(0.0);
 
+
     initial_guess_tran(0, 3) = 0.5;     //initialization
     for (int i = 1; i < frame_num; i++) //throughout all the used frames
     {
@@ -399,17 +412,27 @@ int main(int argc, char **argv)
                 cblock_source->pose_gt = init_poses_gt_lidar_cs.inverse() * poses_gt_lidar_cs[i];
             poses_gt_body_cs[i] = poses_gt_body_cs[0].inverse() * poses_gt_body_cs[i]; //according to the first frame
         }
-        dataio.read_pc_cloud_block(cblock_source);
+
+        //1.读取第一真点云数据######################################################################
+        dataio.read_pc_cloud_block(cblock_source);//根据文件读取点云， 得到点云的包围盒和中心点
+
         std::chrono::steady_clock::time_point toc_import_pc = std::chrono::steady_clock::now();
+        //默认不进入这个条件，根据xy方向上距离的百分比进行滤波
         if (FLAGS_apply_dist_filter)
             cfilter.dist_filter(cblock_source->pc_raw, FLAGS_min_dist_used, FLAGS_max_dist_used);
+        //默认不进入这个条件，
         if (FLAGS_vertical_ang_calib_on) //intrinsic angle correction
             cfilter.vertical_intrinsic_calibration(cblock_source->pc_raw, FLAGS_vertical_ang_correction_deg);
+
+
         // motion compensation [first step: using the last frame's transformation]
+        //2.得到点云在一帧扫描中的时间戳######################################################################
         if (FLAGS_motion_compensation_method == 1) //calculate from time-stamp
             cfilter.get_pts_timestamp_ratio_in_frame(cblock_source->pc_raw, true);
         else if (FLAGS_motion_compensation_method == 2)                                   //calculate from azimuth
             cfilter.get_pts_timestamp_ratio_in_frame(cblock_source->pc_raw, false, 90.0); //HESAI Lidar: 90.0 (y+ axis, clockwise), Velodyne Lidar: 180.0
+
+        //作者这这里提供了多种点云注册方法，需要根据不同的注册方法进行预处理
         if (!strcmp(FLAGS_baseline_reg_method.c_str(), "ndt"))                            //baseline_method
             cfilter.voxel_downsample(cblock_source->pc_raw, cblock_source->pc_down, FLAGS_cloud_down_res);
         else if (!strcmp(FLAGS_baseline_reg_method.c_str(), "gicp")) //baseline_method
@@ -434,6 +457,8 @@ int main(int argc, char **argv)
         else
             local_map_recalculate_feature_on = false;
 
+        //FLAGS_initial_scan2scan_frame_num  = 2
+        //3.前两帧点云叠加形成local map######################################################################
         if (i > FLAGS_initial_scan2scan_frame_num + 1)
             mmanager.update_local_map(cblock_local_map, cblock_target, local_map_radius, local_map_max_pt_num, vertex_keeping_num, append_frame_radius,
                                       FLAGS_apply_map_based_dynamic_removal, FLAGS_used_feature_type, dynamic_removal_radius, dynamic_dist_thre_min, current_linear_velocity * 0.15,
@@ -628,9 +653,13 @@ int main(int argc, char **argv)
         }
         std::chrono::steady_clock::time_point toc_loop_closure = std::chrono::steady_clock::now();
         //scan to scan registration
+        //4.点云scan to scan 位姿求解######################################################################
         if (FLAGS_scan_to_scan_module_on || i <= FLAGS_initial_scan2scan_frame_num)
         {
+            //为配准做点云准备
             creg.assign_source_target_cloud(cblock_target, cblock_source, scan2scan_reg_con);
+
+            //使用不同的配准方法
             if (!strcmp(FLAGS_baseline_reg_method.c_str(), "ndt")) //baseline_method 
                 creg.omp_ndt(scan2scan_reg_con, FLAGS_reg_voxel_size, FLAGS_ndt_searching_method,
                              initial_guess_tran, FLAGS_reg_intersection_filter_on);
@@ -663,7 +692,10 @@ int main(int argc, char **argv)
                       << scan2scan_reg_con.Trans1_2;
             initial_guess_tran = scan2scan_reg_con.Trans1_2;
         }
+
+
         //scan to map registration
+        //5.点云scan to map 位姿求解######################################################################
         if (i % FLAGS_s2m_frequency == 0 && i > FLAGS_initial_scan2scan_frame_num)
         {
             creg.assign_source_target_cloud(cblock_local_map, cblock_source, scan2map_reg_con);
@@ -697,11 +729,15 @@ int main(int argc, char **argv)
             cblock_source->pose_lo = cblock_local_map->pose_lo * scan2map_reg_con.Trans1_2;
             LOG(INFO) << "scan to map registration done\nframe [" << i << "]:\n"
                       << scan2map_reg_con.Trans1_2;
-        }
+        }//end scan to map
         adjacent_pose_out = cblock_source->pose_lo.inverse() * cblock_target->pose_lo; //adjacent_pose_out is the transformation from k to k+1 frame (T2_1)
 
+
+
+
+        //6.点云畸变矫正######################################################################
         std::chrono::steady_clock::time_point toc_registration = std::chrono::steady_clock::now();
-        if (motion_com_while_reg_on)
+        if (motion_com_while_reg_on)//默认进入这个条件
         {
             std::chrono::steady_clock::time_point tic_undistortion = std::chrono::steady_clock::now();
             cfilter.apply_motion_compensation(cblock_source->pc_raw, adjacent_pose_out);
@@ -756,6 +792,7 @@ int main(int argc, char **argv)
             LOG(INFO) << "Render frame [" << i << "] in [" << 1000.0 * vis_time_used_per_frame.count() << "] ms.\n";
         }
         std::chrono::steady_clock::time_point tic_output = std::chrono::steady_clock::now();
+
         if (i == 1) //write out pose
         {
             dataio.write_lo_pose_overwrite(adjacent_pose_out, output_adjacent_lo_pose_file);
@@ -764,6 +801,9 @@ int main(int argc, char **argv)
         }
         else
             dataio.write_lo_pose_append(adjacent_pose_out, output_adjacent_lo_pose_file);
+
+
+
         Eigen::Matrix4d pose_lo_body_frame;
         pose_lo_body_frame = calib_mat * cblock_source->pose_lo * calib_mat.inverse();
         dataio.write_lo_pose_append(cblock_source->pose_lo, output_lo_lidar_pose_file); //lo pose in lidar frame
@@ -801,6 +841,10 @@ int main(int argc, char **argv)
         accu_rot_deg += nav.cal_rotation_deg_from_tranmat(adjacent_pose_out);
         accu_frame += FLAGS_frame_step;
         current_linear_velocity = nav.cal_velocity(poses_lo_adjacent);
+
+
+
+        //just for debug use fyy
         //report timing
         std::chrono::steady_clock::time_point toc_output = std::chrono::steady_clock::now();
         std::chrono::duration<double> time_used_per_frame_lo_1 = std::chrono::duration_cast<std::chrono::duration<double>>(toc_update_map - toc_import_pc);
@@ -819,7 +863,13 @@ int main(int argc, char **argv)
         timing_array[i].push_back(time_used_per_frame_map_updating.count());
         timing_array[i].push_back(time_used_per_frame_registration.count());
         timing_array[i].push_back(time_used_per_frame_loop_closure.count());
-    }
+    }//遍历每帧数据循环结束
+
+
+
+
+
+
     cloudblock_Ptr current_cblock_frame(new cloudblock_t(*cblock_target));
     current_cblock_frame->pose_optimized = current_cblock_frame->pose_lo;
     cblock_frames.push_back(current_cblock_frame);

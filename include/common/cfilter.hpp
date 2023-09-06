@@ -36,8 +36,8 @@ class CFilter : public CloudUtility<PointT>
 	{
 		idpair_t() : idx(0), voxel_idx(0) {}
 
-		unsigned long long voxel_idx;
-		int idx;
+		unsigned long long voxel_idx;//这个点对应的voxelid
+		int idx;//在当前帧点云中是第几个点
 
 		bool operator<(const idpair_t &pair) { return voxel_idx < pair.voxel_idx; }
 	};
@@ -55,7 +55,7 @@ class CFilter : public CloudUtility<PointT>
 		int pts_count;
 		int reliable_neighbor_grid_num;
 		float mean_z;
-		float dist2station;
+		float dist2station;//这个grid距离激光的距离
 
 		grid_t()
 		{
@@ -68,6 +68,7 @@ class CFilter : public CloudUtility<PointT>
 		}
 	};
 
+    //没有使用
 	struct simplified_voxel_t
 	{
 		std::vector<int> point_id;
@@ -80,6 +81,7 @@ class CFilter : public CloudUtility<PointT>
 		}
 	};
 
+    //使用voxel对点云进行降采样，每个voxel中只保存一个点
 	bool voxel_downsample(const typename pcl::PointCloud<PointT>::Ptr &cloud_in, typename pcl::PointCloud<PointT>::Ptr &cloud_out, float voxel_size)
 	{
 		std::chrono::steady_clock::time_point tic = std::chrono::steady_clock::now();
@@ -138,10 +140,11 @@ class CFilter : public CloudUtility<PointT>
 		}
 
 		//Do sorting
+        //跟据在voxel中的id进行排序
 		std::sort(id_pairs.begin(), id_pairs.end());
 
 		int begin_id = 0;
-
+        //只将voxel中的第一个点保存下来
 		while (begin_id < id_pairs.size())
 		{
 			cloud_out->push_back(cloud_in->points[id_pairs[begin_id].idx]);
@@ -156,7 +159,7 @@ class CFilter : public CloudUtility<PointT>
 		std::chrono::duration<double> time_used = std::chrono::duration_cast<std::chrono::duration<double>>(toc - tic);
 
 		//free the memory
-		std::vector<idpair_t>().swap(id_pairs);
+		std::vector<idpair_t>().swap(id_pairs);//why??????/
 
 		LOG(INFO) << "[" << cloud_out->points.size() << "] points remain after the downsampling in ["
 				  << time_used.count() * 1000.0 << "] ms.";
@@ -201,6 +204,7 @@ class CFilter : public CloudUtility<PointT>
 	}
 
 	//SOR (Statisics Outliers Remover);
+    //下面两个函数是用于删除离群点的方法
 	bool sor_filter(typename pcl::PointCloud<PointT>::Ptr &cloud_in, typename pcl::PointCloud<PointT>::Ptr &cloud_out, int mean_k, double n_std)
 	{
 		std::chrono::steady_clock::time_point tic = std::chrono::steady_clock::now();
@@ -245,6 +249,8 @@ class CFilter : public CloudUtility<PointT>
 
 		return 1;
 	}
+
+
 
 	//regenerate the calibrated point cloud (the intrinsic angle might be uncorrect)
 	bool vertical_intrinsic_calibration(typename pcl::PointCloud<PointT>::Ptr &cloud_in_out, double var_vertical_ang_d = 0.0, bool inverse_z = false) //inverse_z is for PANDAR XT Lidar
@@ -409,6 +415,8 @@ class CFilter : public CloudUtility<PointT>
 		return true;
 	}
 
+    //得到点云在一帧中的时间百分比
+    //第一种方式根据时间戳，第二种方式根据角度
 	bool get_pts_timestamp_ratio_in_frame(typename pcl::PointCloud<PointT>::Ptr &cloud_in_out,
 										  bool timestamp_availiable = true,
 										  double scan_begin_ang_anticlock_x_positive_deg = 180.0, float scan_duration_ms = 100)
@@ -490,6 +498,8 @@ class CFilter : public CloudUtility<PointT>
 		}
 	}
 
+    //Tran = 两帧之间的位姿变换
+    //知道两帧之间的相对位姿，并且知道每个激光点的时间戳，利用slerp函数进行畸变矫正
 	void apply_motion_compensation(const typename pcl::PointCloud<PointT>::Ptr pc_in, typename pcl::PointCloud<PointT>::Ptr pc_out,
 								   Eigen::Matrix4d &Tran, float s_ambigous_thre = 0.0)
 	{
@@ -521,12 +531,13 @@ class CFilter : public CloudUtility<PointT>
 										 typename pcl::PointCloud<PointT>::Ptr pc_roof, typename pcl::PointCloud<PointT>::Ptr pc_vertex,
 										 Eigen::Matrix4d &Tran, bool undistort_keypoints_or_not = false)
 	{
+        //根据每个点的时间戳，对点进行畸变矫正
 		apply_motion_compensation(pc_ground, Tran);
 		apply_motion_compensation(pc_pillar, Tran);
 		apply_motion_compensation(pc_beam, Tran);
 		apply_motion_compensation(pc_facade, Tran);
 		apply_motion_compensation(pc_roof, Tran);
-		if (undistort_keypoints_or_not)
+		if (undistort_keypoints_or_not)//作者默认不进入这个条件
 			apply_motion_compensation(pc_vertex, Tran);
 	}
 
@@ -548,6 +559,7 @@ class CFilter : public CloudUtility<PointT>
 			apply_motion_compensation(pc_vertex, pc_vertex_undistort, Tran);
 	}
 
+    //将点云分成不同sector，然后在sector中进行随机采样
 	bool xy_normal_balanced_downsample(typename pcl::PointCloud<PointT>::Ptr &cloud_in_out,
 									   int keep_number_per_sector, int sector_num)
 	{
@@ -727,6 +739,7 @@ class CFilter : public CloudUtility<PointT>
 			return 0;
 	}
 
+    //每隔几个点采样一个点
 	bool random_downsample(typename pcl::PointCloud<PointT>::Ptr &cloud_in_out, int downsample_ratio)
 	{
 		typename pcl::PointCloud<PointT>::Ptr cloud_temp(new pcl::PointCloud<PointT>);
@@ -752,6 +765,7 @@ class CFilter : public CloudUtility<PointT>
 		//TODO
 	}
 
+    //根据反射率的百分比进行滤波
 	bool intensity_filter(typename pcl::PointCloud<PointT>::Ptr &cloud_in_out,
 						  float min_i_thre = 0, float max_i_thre = FLT_MAX, float intensity_scale = 255.0) //min_i_thre, max_i_thre are in the range [0,1]
 	{
@@ -803,6 +817,7 @@ class CFilter : public CloudUtility<PointT>
 	}
 
 	//Filter the point cloud according to the horizontal distance to the scanner (define dist_min and dist_max)
+    //根据xy方向上距离的百分比进行滤波
 	bool dist_filter(typename pcl::PointCloud<PointT>::Ptr &cloud_in_out,
 					 double xy_dist_min, double xy_dist_max)
 	{
@@ -831,6 +846,7 @@ class CFilter : public CloudUtility<PointT>
 	}
 
 	//Filter the point cloud according to the horizontal and vertical distance to the lidar center
+    //根据z轴和xy距离进行滤波，原则是距离太远的点不要
 	bool dist_filter(typename pcl::PointCloud<PointT>::Ptr &cloud_in_out,
 					 double xy_dis_thre, bool keep_inside = true, double z_min = -DBL_MAX, double z_max = DBL_MAX)
 	{
@@ -911,6 +927,7 @@ class CFilter : public CloudUtility<PointT>
 	//filter the ghost points under ground and the points on the ego-vehicle
 	//ghost radius should be a bit larger than self radius
 	//we assume that most of the ghost points are underground outliers within a radius from the laser scanner
+    //删除距离特别近 并且高度低于地面的点
 	bool scanner_filter(const typename pcl::PointCloud<PointT>::Ptr &cloud_in_out,
 						float self_radius, float ghost_radius, float z_min_thre_ghost, float z_min_thre_global)
 	{
@@ -1077,12 +1094,14 @@ class CFilter : public CloudUtility<PointT>
 							  int min_point_num_neighborhood = 8)
 	//extract stable points and then encode point cloud neighborhood feature descriptor (ncc: neighborhood category context) at the same time
 	{
+        //遍历所有的非平面点
 		for (int i = 0; i < features.size(); ++i)
 		{
 			// float ratio1, ratio2;
 			// ratio1 = features[i].values.lamada2 / features[i].values.lamada1;
 			// ratio2 = features[i].values.lamada3 / features[i].values.lamada2;
 			//if (ratio1 < stable_ratio_max && ratio2 < stable_ratio_max &&
+            //这个点周围有足够多的点，且这个点的曲率足够大，后面的所有代码都在这个if语句中
 			if(features[i].pt_num > min_point_num_neighborhood && features[i].curvature > min_curvature)
 			{
 				float accu_intensity = 0.0;
@@ -1095,6 +1114,7 @@ class CFilter : public CloudUtility<PointT>
 
 				neighbor_total_count = features[i].neighbor_indices.size();
 
+                //遍历这个点周围的所有点
 				for (int j = 0; j < neighbor_total_count; j++)
 				{
 					int temp_neighbor_index = features[i].neighbor_indices[j];
@@ -1103,7 +1123,7 @@ class CFilter : public CloudUtility<PointT>
 					case 1:
 					{
 						pillar_count++;
-						if (features[i].close_to_query_point[j])
+						if (features[i].close_to_query_point[j])//距离其他点距离非常进
 							pillar_close_count++;
 						else
 							pillar_far_count++;
@@ -1140,8 +1160,9 @@ class CFilter : public CloudUtility<PointT>
 						break;
 					}
 					accu_intensity += cloud_in->points[temp_neighbor_index].intensity;
-				}
-				if (pillar_count + beam_count + facade_count + roof_count < min_feature_point_num_neighborhood)
+				}//end for (int j = 0; j < neighbor_total_count; j++)
+
+                if (pillar_count + beam_count + facade_count + roof_count < min_feature_point_num_neighborhood)
 					continue;
 
                 //TODO: it's a very stupid way to doing so, change the feature encoding in code refactoring
@@ -1157,15 +1178,16 @@ class CFilter : public CloudUtility<PointT>
 				beam_far_count = 100 * beam_far_count / neighbor_total_count;
 				facade_far_count = 100 * facade_far_count / neighbor_total_count;
 				roof_far_count = 100 * roof_far_count / neighbor_total_count;
-                
+
+                //根据周围点 各个特殊点的占用百分比来生成描述子
 				int descriptor = pillar_count * 1000000 + beam_count * 10000 + facade_count * 100 + roof_count; //the neighborhood discriptor (8 numbers)
 				int descriptor_1 = pillar_close_count * 1000000 + beam_close_count * 10000 + facade_close_count * 100 + roof_close_count;
 				int descriptor_2 = pillar_far_count * 1000000 + beam_far_count * 10000 + facade_far_count * 100 + roof_far_count;
 
 				//TODO: fix later, keypoints would not be used in fine registration, so we do not need the timestamp (stored in curvature) and normal vector
 				pt.curvature = descriptor;
-				pt.normal[0] = descriptor_1;
-				pt.normal[1] = descriptor_2;
+				pt.normal[0] = descriptor_1;//近点的百分比
+				pt.normal[1] = descriptor_2;//远点的百分比
 
 				pt.intensity = accu_intensity / neighbor_total_count; //mean intensity of the nrighborhood
 																	  //pt.normal[3] store the point curvature
@@ -1342,7 +1364,7 @@ class CFilter : public CloudUtility<PointT>
 			int id;
 			iterUnseg = unVisitedPtId.begin();
 			id = *iterUnseg;
-			indices->indices.push_back(features[id].ptId);
+			indices->indices.push_back(features[id].ptId);//需要返回的核心变量
 			unVisitedPtId.erase(id);
 
 			float curvature_non_max_radius = nms_radius;
@@ -1656,10 +1678,10 @@ class CFilter : public CloudUtility<PointT>
 	// Reference paper: Two-step adaptive extraction method for ground points and breaklines from lidar point clouds, ISPRS-J, Yang.B, Huang.R, et al.
 	// -------------------------------------------------------------------------------------------------------------------//
 	bool fast_ground_filter(const typename pcl::PointCloud<PointT>::Ptr &cloud_in,
-							typename pcl::PointCloud<PointT>::Ptr &cloud_ground,
-							typename pcl::PointCloud<PointT>::Ptr &cloud_ground_down,
-							typename pcl::PointCloud<PointT>::Ptr &cloud_unground,
-							typename pcl::PointCloud<PointT>::Ptr &cloud_curb,
+							typename pcl::PointCloud<PointT>::Ptr &cloud_ground,//地面点
+							typename pcl::PointCloud<PointT>::Ptr &cloud_ground_down,//降才采样之后的地面点
+							typename pcl::PointCloud<PointT>::Ptr &cloud_unground,//非地面点
+							typename pcl::PointCloud<PointT>::Ptr &cloud_curb,//废弃了不再使用
 							int min_grid_pt_num, float grid_resolution, float max_height_difference,
 							float neighbor_height_diff, float max_ground_height,
 							int ground_random_down_rate, int ground_random_down_down_rate, int nonground_random_down_rate, int reliable_neighbor_grid_num_thre,
@@ -1679,10 +1701,10 @@ class CFilter : public CloudUtility<PointT>
 		int reliable_grid_pts_count_thre = min_grid_pt_num - 1;
 		int count_checkpoint = 0;
 		float sum_height = 0.001;
-		float appro_mean_height;
+		float appro_mean_height;//当前帧的平均高度
 		float min_ground_height = max_ground_height;
 		float underground_noise_thre = -FLT_MAX;
-		float non_ground_height_thre;
+		float non_ground_height_thre;//等于平均高度+设定的地面最大高度
 		float distance_weight;
 		// int ground_random_down_rate_temp = ground_random_down_rate;
 		// int nonground_random_down_rate_temp = nonground_random_down_rate;
@@ -1698,17 +1720,19 @@ class CFilter : public CloudUtility<PointT>
 		}
 		appro_mean_height = sum_height / count_checkpoint;
 
-		non_ground_height_thre = appro_mean_height + max_ground_height;
+		non_ground_height_thre = appro_mean_height + max_ground_height;//max_ground_height  = 1.5
 		//sometimes, there would be some underground ghost points (noise), however, these points would be removed by scanner filter
 		//float underground_noise_thre = appro_mean_height - max_ground_height;  // this is a keyparameter.
 
+        //得到点云的包围盒和中心点
 		bounds_t bounds;
 		centerpoint_t center_pt;
 		this->get_cloud_bbx_cpt(cloud_in, bounds, center_pt); //Inherited from its parent class, use this->
 
+        //1.构建grid map##############################################################################################################3
 		//Construct Grid
 		int row, col, num_grid;
-		row = ceil((bounds.max_y - bounds.min_y) / grid_resolution);
+		row = ceil((bounds.max_y - bounds.min_y) / grid_resolution);//grid_resolution 默认参数 = 3.0
 		col = ceil((bounds.max_x - bounds.min_x) / grid_resolution);
 		num_grid = row * col;
 
@@ -1737,8 +1761,10 @@ class CFilter : public CloudUtility<PointT>
 					grid[temp_id].dist2station = std::sqrt(cloud_in->points[j].x * cloud_in->points[j].x + cloud_in->points[j].y * cloud_in->points[j].y + cloud_in->points[j].z * cloud_in->points[j].z);
 				}
 
-				if (cloud_in->points[j].z > non_ground_height_thre)
+				if (cloud_in->points[j].z > non_ground_height_thre)//non_ground_height_thre = 等于平均高度+设定的地面最大高度
 				{
+                    //standard_distance 默认参数 = 15.0
+                    //要注意这里作者对非地面点做了一个随机下采样
 					distance_weight = 1.0 * standard_distance / (grid[temp_id].dist2station + 0.0001); //avoiding Floating point exception
 					int nonground_random_down_rate_temp = nonground_random_down_rate;
 					if (distance_weight_downsampling_method == 1) //linear weight
@@ -1746,13 +1772,13 @@ class CFilter : public CloudUtility<PointT>
 					else if (distance_weight_downsampling_method == 2) //quadratic weight
 						nonground_random_down_rate_temp = (int)(distance_weight * distance_weight * nonground_random_down_rate + 1);
 
-					if (j % nonground_random_down_rate_temp == 0 || cloud_in->points[j].intensity > intensity_thre)
+					if (j % nonground_random_down_rate_temp == 0 || cloud_in->points[j].intensity > intensity_thre)//intensity_thre = double最大值
 					{
 						cloud_in->points[j].data[3] = cloud_in->points[j].z - (appro_mean_height - 3.0); //data[3] stores the approximate point height above ground
 						cloud_unground->points.push_back(cloud_in->points[j]);
 					}
 				}
-				else if (cloud_in->points[j].z > underground_noise_thre)
+				else if (cloud_in->points[j].z > underground_noise_thre)//
 				{
 					grid[temp_id].pts_count++;
 					grid[temp_id].point_id.push_back(j);
@@ -1789,6 +1815,7 @@ class CFilter : public CloudUtility<PointT>
 
 		std::chrono::steady_clock::time_point toc_1_3 = std::chrono::steady_clock::now();
 
+        //2.遍历所有的grid
 		//Each grid
 		for (int m = 0; m < num_grid; m++)
 		{
@@ -1857,7 +1884,7 @@ class CFilter : public CloudUtility<PointT>
 							if (cloud_in->points[grid[i].point_id[j]].z - grid[i].min_z < max_height_difference)
 							{
 								//cloud_ground_full->points.push_back(cloud_in->points[grid[i].point_id[j]]);
-								if (estimate_ground_normal_method == 3)
+								if (estimate_ground_normal_method == 3)//默认使用这种方法
 									grid_ground->points.push_back(cloud_in->points[grid[i].point_id[j]]);
 								else
 								{
@@ -1883,7 +1910,7 @@ class CFilter : public CloudUtility<PointT>
 									//cloud_unground->points.push_back(cloud_in->points[grid[i].point_id[j]]); //Add to nonground points
 								}
 							}
-						}
+						}//end if (cloud_in->points[grid[i].point_id[j]].z > grid[i].min_z_outlier_thre)
 					}
 				}
 				else //unground grid
@@ -1899,6 +1926,10 @@ class CFilter : public CloudUtility<PointT>
 						}
 					}
 				}
+
+
+
+                //使用所有的点拟合平面，并更新地面点的法向量
 				if (estimate_ground_normal_method == 3 && grid_ground->points.size() >= min_grid_pt_num)
 				{
 					std::chrono::steady_clock::time_point tic_ransac = std::chrono::steady_clock::now();
@@ -1925,9 +1956,10 @@ class CFilter : public CloudUtility<PointT>
 				}
 				pcl::PointCloud<PointT>().swap(*grid_ground);
 			}
-		}
+		}//end for (int i = 0; i < num_grid; i++)
 
 		//combine the ground and unground points
+        //根据grid中的所有点更新最终的地面点和非地面点
 		for (int i = 0; i < num_grid; i++)
 		{
 			cloud_ground->points.insert(cloud_ground->points.end(), grid_ground_pcs[i]->points.begin(), grid_ground_pcs[i]->points.end());
@@ -1946,6 +1978,7 @@ class CFilter : public CloudUtility<PointT>
 		else if (estimate_ground_normal_method == 2)
 			pca_estimator.get_normal_pcak(cloud_ground, normal_estimation_neighbor_k, ground_normal);
 
+        //3.对地面点进行随机下采样,并对每个地面点赋值法线
 		for (int i = 0; i < cloud_ground->points.size(); i++)
 		{
 			if (estimate_ground_normal_method == 1 || estimate_ground_normal_method == 2)
@@ -1967,6 +2000,7 @@ class CFilter : public CloudUtility<PointT>
 
 		pcl::PointCloud<pcl::Normal>().swap(*ground_normal);
 
+        //just use for debug
 		std::chrono::steady_clock::time_point toc_3 = std::chrono::steady_clock::now();
 		std::chrono::duration<double> ground_seg_time = std::chrono::duration_cast<std::chrono::duration<double>>(toc_2 - tic);
 		std::chrono::duration<double> ground_seg_prepare_time = std::chrono::duration_cast<std::chrono::duration<double>>(toc_1 - tic);
@@ -2055,7 +2089,7 @@ class CFilter : public CloudUtility<PointT>
 
 	//Brief: Classfiy the downsampled non-ground points into several types (Pillar, Beam, Facade, Roof, Vertex)
 	//according to the pca features (combination of eigen values and eigen vectors)
-	bool classify_nground_pts(typename pcl::PointCloud<PointT>::Ptr &cloud_in,
+	bool classify_nground_pts(typename pcl::PointCloud<PointT>::Ptr &cloud_in,//input 非地面点
 							  typename pcl::PointCloud<PointT>::Ptr &cloud_pillar,
 							  typename pcl::PointCloud<PointT>::Ptr &cloud_beam,
 							  typename pcl::PointCloud<PointT>::Ptr &cloud_facade,
@@ -2091,18 +2125,21 @@ class CFilter : public CloudUtility<PointT>
 		tree->setInputCloud(cloud_in);
 
 		float unit_distance = 30.0;
+        //1.计算每个非地面点的pca参数
+        //output  param = cloud_features
 		pca_estimator.get_pc_pca_feature(cloud_in, cloud_features, tree, neighbor_searching_radius, neighbor_k, 1, pca_down_rate, use_distance_adaptive_pca, unit_distance);
 		//LOG(WARNING)<< "PCA done";
 
 		std::chrono::steady_clock::time_point toc_pca = std::chrono::steady_clock::now();
 
 		//the radius should be larger for far away points
+        //1.2.遍历每个非地面点，并根据pca参数为每个点进行归类
 		std::vector<int> index_with_feature(cloud_in->points.size(), 0); // 0 - not special points, 1 - pillar, 2 - beam, 3 - facade, 4 - roof
-
 		for (int i = 0; i < cloud_in->points.size(); i++)
 		{
-			if (cloud_features[i].pt_num > neigh_k_min)
+			if (cloud_features[i].pt_num > neigh_k_min)//后面所有的代码都在这个if下，离群点不对他归类
 			{
+
 				if (cloud_features[i].linear_2 > edge_thre)
 				{
 					if (std::abs(cloud_features[i].vectors.principalDirection.z()) > linear_vertical_sin_high_thre)
@@ -2111,7 +2148,8 @@ class CFilter : public CloudUtility<PointT>
 						cloud_pillar->points.push_back(cloud_in->points[i]);
 						index_with_feature[i] = 1;
 					}
-					else if (std::abs(cloud_features[i].vectors.principalDirection.z()) < linear_vertical_sin_low_thre && cloud_in->points[i].z < beam_height_max)
+					else if (std::abs(cloud_features[i].vectors.principalDirection.z()) < linear_vertical_sin_low_thre &&
+                            cloud_in->points[i].z < beam_height_max)
 					{
 						pca_estimator.assign_normal(cloud_in->points[i], cloud_features[i], false);
 						cloud_beam->points.push_back(cloud_in->points[i]);
@@ -2133,7 +2171,7 @@ class CFilter : public CloudUtility<PointT>
 							;
 						}
 					}
-				}
+				}//end if (cloud_features[i].linear_2 > edge_thre)
 
 				else if (cloud_features[i].planar_2 > planar_thre)
 				{
@@ -2173,6 +2211,7 @@ class CFilter : public CloudUtility<PointT>
 			extract_vertex_points_method = 0;
 
 		//Find Edge points by picking high curvature points among the neighborhood of unground geometric feature points (2)
+        //1.3.从非特殊点中再根据这个点的周围点的信息，将其归类为beam或者pillar点
 		if (extract_vertex_points_method == 2)
 		{
 			float vertex_feature_ratio_thre = feature_pts_ratio_guess / pca_down_rate;
@@ -2180,8 +2219,10 @@ class CFilter : public CloudUtility<PointT>
 			{
 				// if (index_with_feature[i] == 0)
 				// 	cloud_vertex->points.push_back(cloud_in->points[i]);
-
-				if (index_with_feature[i] == 0 && cloud_features[i].pt_num > neigh_k_min && cloud_features[i].curvature > curvature_thre) //curvature_thre means curvature_thre here
+                //这个点是非特殊点，且这个点周围有足够多的点，且这个点的曲率非常大
+				if (index_with_feature[i] == 0 &&
+                cloud_features[i].pt_num > neigh_k_min &&
+                cloud_features[i].curvature > curvature_thre) //curvature_thre means curvature_thre here
 				{
 					int geo_feature_point_count = 0;
 					for (int j = 0; j < cloud_features[i].neighbor_indices.size(); j++)
@@ -2190,7 +2231,8 @@ class CFilter : public CloudUtility<PointT>
 							geo_feature_point_count++;
 					}
 					//LOG(INFO)<< "facade neighbor num: " <<geo_feature_point_count;
-					if (1.0 * geo_feature_point_count / cloud_features[i].pt_num > vertex_feature_ratio_thre) //most of the neighbors are feature points
+                    //这个非特殊点周围点特殊点也要足够多
+                    if (1.0 * geo_feature_point_count / cloud_features[i].pt_num > vertex_feature_ratio_thre) //most of the neighbors are feature points
 					{
 						//cloud_vertex->points.push_back(cloud_in->points[i]);
 
@@ -2222,6 +2264,7 @@ class CFilter : public CloudUtility<PointT>
 		int min_neighbor_feature_pts = (int)(feature_pts_ratio_guess / pca_down_rate * neighbor_k) - 1;
 
 		//get the vertex keypoints and encode its neighborhood in a simple descriptor
+        //2.为某个点生成描述子
 		encode_stable_points(cloud_in, cloud_vertex, cloud_features, index_with_feature,
 							 0.3 * curvature_thre, min_neighbor_feature_pts, neigh_k_min); //encode the keypoints, we will get a simple descriptor of the putable keypoints
 
@@ -2230,6 +2273,7 @@ class CFilter : public CloudUtility<PointT>
 		std::chrono::steady_clock::time_point toc_2 = std::chrono::steady_clock::now();
 
 		//Non_max_suppression of the feature points //TODO: add already built-kd tree here
+        //3.1对pillar cloud_facade beam cloud_roof 特征点进行非最大值抑制
 		if (sharpen_with_nms)
 		{
 			float nms_radius = 0.25 * neighbor_searching_radius;
@@ -2257,7 +2301,7 @@ class CFilter : public CloudUtility<PointT>
 		}
 
 		std::chrono::steady_clock::time_point toc_3 = std::chrono::steady_clock::now();
-
+        //3.2.对cloud_facade cloud_beam_down cloud_roof_down 将点云分成不同sector，然后在sector中进行随机采样
 		if (fixed_num_downsampling)
 		{
 			random_downsample_pcl(cloud_pillar_down, pillar_down_fixed_num);
@@ -2316,6 +2360,7 @@ class CFilter : public CloudUtility<PointT>
 							  float approx_scanner_height = 2.0, float underground_thre = -7.0, float feature_pts_ratio_guess = 0.3,
 							  bool semantic_assisted = false, bool apply_roi_filtering = false, float roi_min_y = 0.0, float roi_max_y = 0.0)
 	{
+        //默认不会进入这个条件
 		if (use_adpative_parameters)
 			LOG(INFO) << "update parameters"
 					  << "\ngf_down_rate_ground: " << gf_down_rate_ground
@@ -2328,24 +2373,26 @@ class CFilter : public CloudUtility<PointT>
 
 		//with semantic mask
 		//remove dynamic objects and outliers (underground ghost points) using the semantic mask predicted by neural network
+        //默认不进入个条件,根据感知的结果删除动态点云
 		if (semantic_assisted)
 			filter_with_dynamic_object_mask_pre(in_block->pc_raw);
-
-		else if (apply_scanner_filter)
+		else if (apply_scanner_filter)//默认不进入这个条件
 		{
 			float self_ring_radius = 1.75;
 			float ghost_radius = 20.0;
 			float z_min = -approx_scanner_height - 4.0;
 			float z_min_min = -approx_scanner_height + underground_thre;
 			// filter the point cloud of the back of the vehicle itself and the underground
+            // 删除距离特别近 并且高度低于地面的点
 			scanner_filter(in_block->pc_raw, self_ring_radius, ghost_radius, z_min, z_min_min);
 			//dist_filter(in_block->pc_raw, self_ring_radius, false, z_min); // filter the point cloud of the back of the vehicle itself
 		}
 
 		//get_pc_ring_ids(in_block->pc_raw);
 
+        //1.对点云进行下采样
 		voxel_downsample(in_block->pc_raw, in_block->pc_down, vf_downsample_resolution);
-
+        //每隔几个点采样一个点
 		random_downsample(in_block->pc_down, in_block->pc_sketch, in_block->pc_down->points.size() / 1024 + 1);
 
 		//Used for UAV borne Lidar SLAM
@@ -2354,6 +2401,7 @@ class CFilter : public CloudUtility<PointT>
 		//pcl::transformPointCloud(*in_block->pc_down, *rotated_pc_down, in_block->pose_lo); //now the pose_lo stored only the rotation matrix of last frame
 
 		//filtered point cloud --> ground & non-ground point cloud
+        //2.提取地面点
 		fast_ground_filter(in_block->pc_down, in_block->pc_ground, in_block->pc_ground_down, in_block->pc_unground, in_block->pc_vertex,
 						   gf_grid_pt_num_thre, gf_grid_resolution, gf_max_grid_height_diff, gf_neighbor_height_diff,
 						   gf_max_ground_height, gf_down_rate_ground, gf_down_down_rate_ground,
@@ -2402,6 +2450,7 @@ class CFilter : public CloudUtility<PointT>
 										   in_block->pc_facade_down->points.size() + in_block->pc_roof_down->points.size() + in_block->pc_vertex->points.size();
 
 		//update the parameters according to the situation
+        //默认不进入这个条件
 		if (use_adpative_parameters)
 			update_parameters_self_adaptive(gf_down_rate_ground, gf_downsample_rate_nonground, pca_neighbor_radius,
 											edge_thre, planar_thre, edge_thre_down, planar_thre_down,
@@ -2409,7 +2458,7 @@ class CFilter : public CloudUtility<PointT>
 											in_block->pc_pillar_down->points.size(), in_block->pc_beam_down->points.size());
 
 		//pcl::PointCloud<PointT>().swap(*rotated_pc_down);
-    return true;
+        return true;
 	}
 
 	//hard-coded (not a good way) to adjust the parameters on fly

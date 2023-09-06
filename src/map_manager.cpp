@@ -25,11 +25,13 @@ bool MapManager::update_local_map(cloudblock_Ptr local_map, cloudblock_Ptr last_
 
     //float near_dist_thre = 0.03;
     CFilter<Point_T> cf;
+    //1.tran_target_map= 将local系下的点变换到当前帧
     Eigen::Matrix4d tran_target_map; //from the last local_map to the target frame
     tran_target_map = last_target_cblock->pose_lo.inverse() * local_map->pose_lo;
    
 
     //to avoid building kd-tree twice , do the map based filtering at first before the transforming
+    //2.将当前帧的特征点云变换到local map坐标系下
     last_target_cblock->transform_feature(tran_target_map.inverse(), true, false);
     
     dynamic_dist_thre_max = max_(dynamic_dist_thre_max, dynamic_dist_thre_min + 0.1);
@@ -51,14 +53,17 @@ bool MapManager::update_local_map(cloudblock_Ptr local_map, cloudblock_Ptr last_
 
     // float keypoint_close_dist_thre = 8.0;
     // cf.dist_filter(last_target_cblock->pc_vertex, keypoint_close_dist_thre, false); // get more points that are far away from the center of the scanner
+    //3.将特征点加入到local map中
     local_map->append_feature(*last_target_cblock, true, used_feature_type);
 
     //we only use the undown (regarded as target) feature points for local map
+    //4.将local map系下的点全部变换到当前帧坐标系下
     local_map->transform_feature(tran_target_map, false);
     local_map->pose_lo = last_target_cblock->pose_lo;
     local_map->pose_gt = last_target_cblock->pose_gt;
 
     //keep only the points in the sphere
+    //5.对距离当前帧太远的点滤除
     cf.dist_filter(local_map->pc_ground, local_map_radius);
     cf.dist_filter(local_map->pc_facade, local_map_radius);
     cf.dist_filter(local_map->pc_pillar, local_map_radius);
@@ -77,7 +82,7 @@ bool MapManager::update_local_map(cloudblock_Ptr local_map, cloudblock_Ptr last_
     int kept_roof_num = (int)(1.0 * max_num_pts / current_pts_count * local_map->pc_roof->points.size() + 1);
     int kept_pillar_num = (int)(1.0 * max_num_pts / current_pts_count * local_map->pc_pillar->points.size() + 1);
     int kept_beam_num = (int)(1.0 * max_num_pts / current_pts_count * local_map->pc_beam->points.size() + 1);
-
+    //6.对local map中的所有特征点进行随机降采样
     cf.random_downsample_pcl(local_map->pc_ground, kept_ground_num);
     cf.random_downsample_pcl(local_map->pc_facade, kept_facade_num);
     cf.random_downsample_pcl(local_map->pc_roof, kept_roof_num);
@@ -86,10 +91,12 @@ bool MapManager::update_local_map(cloudblock_Ptr local_map, cloudblock_Ptr last_
     cf.random_downsample_pcl(local_map->pc_vertex, kept_vertex_num);
 
     //calculate bbx (local)
-    local_map->merge_feature_points(local_map->pc_raw, false);
+    //7,将所有的特征点加起来，得到所有特征点的总和pc_raw
+    local_map->merge_feature_points(local_map->pc_raw, false);//very important function
     cf.get_cloud_bbx(local_map->pc_raw, local_map->local_bound);
 
     //calculate bbx (global)
+    //8.将local map在当前帧的所有点变换到世界坐标系下
     pcl::transformPointCloud(*local_map->pc_raw, *local_map->pc_raw_w, local_map->pose_lo);
     cf.get_cloud_bbx(local_map->pc_raw_w, local_map->bound);
 
@@ -146,6 +153,7 @@ bool MapManager::update_local_map(cloudblock_Ptr local_map, cloudblock_Ptr last_
 //for each non-boundary unground points of current frame, check its nearest neighbor in the local map, if the distance
 //to the nearest neighbor is larger than a threshold, then this point would be regarded as a part of an active object
 //we will filter the points whose distance is (0, near_dist_thre] U [dynamic_dist_thre_min, dynamic_dist_thre_max] to its nearest neighbor in the local map
+//类内成员函数
 bool MapManager::map_based_dynamic_close_removal(cloudblock_Ptr local_map, cloudblock_Ptr last_target_cblock, std::string used_feature_type,
                                                  float center_radius, float dynamic_dist_thre_min, float dynamic_dist_thre_max, float near_dist_thre)
 //feature_pts_down is used to append into the local map [dynamic_dist_thre used]
@@ -219,6 +227,7 @@ bool MapManager::map_based_dynamic_close_removal(cloudblock_Ptr local_map, cloud
 
 // filter (0, near_dist_thre) U (dynamic_dist_thre_min, dynamic_dist_thre_max)
 // keep (near_dist_thre, dynamic_dist_thre_min) U (dynamic_dist_thre_max, +inf)
+//类内成员函数
 bool MapManager::map_scan_feature_pts_distance_removal(pcTPtr feature_pts, const pcTreePtr map_kdtree, float center_radius,
                                                        float dynamic_dist_thre_min, float dynamic_dist_thre_max, float near_dist_thre)
 {
@@ -255,6 +264,7 @@ bool MapManager::map_scan_feature_pts_distance_removal(pcTPtr feature_pts, const
     return true;
 }
 
+//类内成员函数
 bool MapManager::update_cloud_vectors(pcTPtr feature_pts, const pcTreePtr map_kdtree,
                                       float pca_radius, int pca_k,
                                       int k_min, float sin_low, float sin_high, float min_linearity)

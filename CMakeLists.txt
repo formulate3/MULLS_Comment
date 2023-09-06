@@ -5,6 +5,7 @@ message("Current Cmake version is : " ${CMAKE_VERSION})
 
 project(lidar_odom CXX)
 
+add_definitions(-w)
 ########################
 #        brief         #
 ########################
@@ -21,17 +22,17 @@ project(lidar_odom CXX)
 option(BUILD_WITH_CUDA "Build with CUDA for GPU computation" OFF)
 option(BUILD_WITH_OPENCV "Build with OpenCV2 for Image related Processing" ON)
 option(BUILD_WITH_LIBLAS "Build with LIBLAS for *.LAS point cloud data IO" OFF)
-option(BUILD_WITH_HDF5 "Build with HDF5 for *.H5 point cloud data IO" ON)
+option(BUILD_WITH_HDF5 "Build with HDF5 for *.H5 point cloud data IO" OFF)
 option(BUILD_WITH_PROJ4 "Build with PROJ4 for Geo-coordinate Projection" OFF)
 option(BUILD_WITH_CERES "Build with CERES for Non-linear Optimization" ON)
 option(BUILD_WITH_G2O "Build with G2O for Non-linear Optimization" OFF)
 option(BUILD_WITH_GTSAM "Build with GTSAM for Non-linear Optimization" OFF)
 option(BUILD_WITH_SOPHUS "Build with SOPHUS for Lie-Group related Operations" OFF)
-option(BUILD_WITH_TEASER "Build with TEASER++ for faster Global Registration (or RANSAC would be used)" ON)
+option(BUILD_WITH_TEASER "Build with TEASER++ for faster Global Registration (or RANSAC would be used)" OFF)#fyy
 
-option(BUILD_TOOLS "Build the point cloud format transformation tools" ON)
-option(BUILD_PAIRWISE_REG "Build the pairwise registration test" ON)
-option(BUILD_REPLAY "Build the Lidar SLAM replaying tool" ON)
+option(BUILD_TOOLS "Build the point cloud format transformation tools" OFF)
+option(BUILD_PAIRWISE_REG "Build the pairwise registration test" OFF)
+option(BUILD_REPLAY "Build the Lidar SLAM replaying tool" OFF)
 
 if(NOT CMAKE_BUILD_TYPE)
   message(STATUS "No build type selected, default to Release")
@@ -166,12 +167,12 @@ if (BUILD_WITH_SOPHUS)
 endif (BUILD_WITH_SOPHUS)
 
 #TEASER++
-if (BUILD_WITH_TEASER)
-  find_package(teaserpp REQUIRED QUIET)
-  include_directories(${teaserpp_INCLUDE_DIRS})
-  message("Teaser++ [OK]")
-  add_definitions(-DTEASER_ON)
-endif (BUILD_WITH_TEASER)
+#if (BUILD_WITH_TEASER)
+#  find_package(teaserpp REQUIRED QUIET)
+#  include_directories(${teaserpp_INCLUDE_DIRS})
+#  message("Teaser++ [OK]")
+#  add_definitions(-DTEASER_ON)
+#endif (BUILD_WITH_TEASER)
 
 #OpenCV2
 if (BUILD_WITH_OPENCV)
@@ -228,23 +229,23 @@ set(SRC_LIST
 ########################
 
 set(DEP_LIBS ${DEP_LIBS} Threads::Threads Boost::thread OpenMP::OpenMP_CXX)
-set(DEP_LIBS ${DEP_LIBS} Eigen3::Eigen)
+#set(DEP_LIBS ${DEP_LIBS} Eigen3::Eigen)#fyy comment
 
 #link pcl lib (neccessary)
 set(DEP_LIBS ${DEP_LIBS} ${PCL_LIBRARIES})
 set(DEP_LIBS ${DEP_LIBS} ${GFLAGS_LIBRARIES})
 set(DEP_LIBS ${DEP_LIBS} ${GLOG_LIBRARIES})
 
-if (BUILD_WITH_HDF5)
-  #link libhdf5 lib (optional)
-  #link openmpi [needed by hdf5]
-  set(DEP_LIBS ${DEP_LIBS} mpi_cxx hdf5_serial libhdf5_cpp.so)
-endif (BUILD_WITH_HDF5)
+#if (BUILD_WITH_HDF5)
+#  #link libhdf5 lib (optional)
+#  #link openmpi [needed by hdf5]
+#  set(DEP_LIBS ${DEP_LIBS} mpi_cxx hdf5_serial libhdf5_cpp.so)
+#endif (BUILD_WITH_HDF5)
 
-if (BUILD_WITH_PROJ4)
-  #link proj4
-  set(DEP_LIBS ${DEP_LIBS} ${PROJ4_LIBRARIES})
-endif (BUILD_WITH_PROJ4)
+#if (BUILD_WITH_PROJ4)
+#  #link proj4
+#  set(DEP_LIBS ${DEP_LIBS} ${PROJ4_LIBRARIES})
+#endif (BUILD_WITH_PROJ4)
 
 if (BUILD_WITH_LIBLAS)
   #link Liblas
@@ -256,25 +257,25 @@ if (BUILD_WITH_CERES)
   set(DEP_LIBS ${DEP_LIBS} ${CERES_LIBRARIES})
 endif (BUILD_WITH_CERES)
 
-if (BUILD_WITH_SOPHUS)
-  #link sophus lib (optional)
-  set(DEP_LIBS ${DEP_LIBS} ${Sophus_LIBRARIES})
-endif (BUILD_WITH_SOPHUS)
+#if (BUILD_WITH_SOPHUS)
+#  #link sophus lib (optional)
+#  set(DEP_LIBS ${DEP_LIBS} ${Sophus_LIBRARIES})
+#endif (BUILD_WITH_SOPHUS)
 
-if (BUILD_WITH_G2O)
-  #manually link g2o_libs (optional)
-  set(DEP_LIBS ${DEP_LIBS} g2o_types_slam3d g2o_core g2o_stuff g2o_types_sba g2o_csparse_extension)
-endif (BUILD_WITH_G2O)
+#if (BUILD_WITH_G2O)
+#  #manually link g2o_libs (optional)
+#  set(DEP_LIBS ${DEP_LIBS} g2o_types_slam3d g2o_core g2o_stuff g2o_types_sba g2o_csparse_extension)
+#endif (BUILD_WITH_G2O)
 
-if (BUILD_WITH_GTSAM)
-  #link gtsam lib (optional)
-  set(DEP_LIBS ${DEP_LIBS} ${GTSAM_LIBRARIES} gtsam)
-endif (BUILD_WITH_GTSAM)
+#if (BUILD_WITH_GTSAM)
+#  #link gtsam lib (optional)
+#  set(DEP_LIBS ${DEP_LIBS} ${GTSAM_LIBRARIES} gtsam)
+#endif (BUILD_WITH_GTSAM)
 
-if (BUILD_WITH_TEASER)
-  #link teaser ++ (optional)
-  set(DEP_LIBS ${DEP_LIBS} teaserpp::teaser_registration teaserpp::teaser_io)
-endif (BUILD_WITH_TEASER)
+#if (BUILD_WITH_TEASER)
+#  #link teaser ++ (optional)
+#  set(DEP_LIBS ${DEP_LIBS} teaserpp::teaser_registration teaserpp::teaser_io)
+#endif (BUILD_WITH_TEASER)
 
 if (BUILD_WITH_OPENCV)
   #link opencv (optional)
@@ -289,28 +290,28 @@ endif (BUILD_WITH_OPENCV)
 add_executable(mulls_slam ${PROJECT_SOURCE_DIR}/test/mulls_slam.cpp ${SRC_LIST} ${REG_SRC_LIST})
 target_link_libraries(mulls_slam ${DEP_LIBS})
 
-if (BUILD_PAIRWISE_REG)
-  #test pairwise registration (both global and local) [not used]
-  add_executable(mulls_reg ${PROJECT_SOURCE_DIR}/test/mulls_reg.cpp ${SRC_LIST})
-  target_link_libraries(mulls_reg ${DEP_LIBS})
-endif ()
-
-if (BUILD_REPLAY)
-  #test slam recapping and checking [compile at the first time]
-  add_executable(replay_slam ${PROJECT_SOURCE_DIR}/test/vis_slam.cpp)
-  target_link_libraries(replay_slam ${DEP_LIBS})
-endif ()
-
-if (BUILD_TOOLS)
-  #format_transformer tool for kitti [compile at the first time]
-  add_executable(bin2pcd ${PROJECT_SOURCE_DIR}/test/format_transformer/kitti_bin2pcd.cpp)
-  target_link_libraries(bin2pcd ${DEP_LIBS})
-
-  #format_transformer tool for semantic kitti [compile at the first time]
-  add_executable(labelbin2pcd ${PROJECT_SOURCE_DIR}/test/format_transformer/semantic_kitti_label2pcd.cpp)
-  target_link_libraries(labelbin2pcd ${DEP_LIBS})
-
-  add_executable(txt2pcd ${PROJECT_SOURCE_DIR}/test/format_transformer/txt2pcd.cpp)
-  target_link_libraries(txt2pcd ${DEP_LIBS})
-
-endif ()
+#if (BUILD_PAIRWISE_REG)
+#  #test pairwise registration (both global and local) [not used]
+#  add_executable(mulls_reg ${PROJECT_SOURCE_DIR}/test/mulls_reg.cpp ${SRC_LIST})
+#  target_link_libraries(mulls_reg ${DEP_LIBS})
+#endif ()
+#
+#if (BUILD_REPLAY)
+#  #test slam recapping and checking [compile at the first time]
+#  add_executable(replay_slam ${PROJECT_SOURCE_DIR}/test/vis_slam.cpp)
+#  target_link_libraries(replay_slam ${DEP_LIBS})
+#endif ()
+#
+#if (BUILD_TOOLS)
+#  #format_transformer tool for kitti [compile at the first time]
+#  add_executable(bin2pcd ${PROJECT_SOURCE_DIR}/test/format_transformer/kitti_bin2pcd.cpp)
+#  target_link_libraries(bin2pcd ${DEP_LIBS})
+#
+#  #format_transformer tool for semantic kitti [compile at the first time]
+#  add_executable(labelbin2pcd ${PROJECT_SOURCE_DIR}/test/format_transformer/semantic_kitti_label2pcd.cpp)
+#  target_link_libraries(labelbin2pcd ${DEP_LIBS})
+#
+#  add_executable(txt2pcd ${PROJECT_SOURCE_DIR}/test/format_transformer/txt2pcd.cpp)
+#  target_link_libraries(txt2pcd ${DEP_LIBS})
+#
+#endif ()

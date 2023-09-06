@@ -3,6 +3,7 @@
 
 namespace lo
 {
+    //对tz赋值为0
     bool Navigation::zupt_simple(Eigen::Matrix4d &Trans, float stop_hor_dis_thre, float fix_hor_dis_thre)
     {
         float hor_displacement = std::sqrt(Trans(0, 3) * Trans(0, 3) + Trans(1, 3) * Trans(1, 3));
@@ -21,6 +22,8 @@ namespace lo
         return true;
     }
 
+    //使用队列的后几帧计算平均速度，后几帧的数量由mean_frame_num决定
+    //队列中存储的是相邻两个frame的相对位姿
     double Navigation::cal_velocity(Matrix4ds &Trans, int mean_frame_num, int frame_per_second)
     {
         int mean_frame_num_used;
@@ -53,6 +56,7 @@ namespace lo
         return mean_linear_velocity;
     }
 
+    //提取4×4位姿矩阵中的translation的norm
     double Navigation::cal_translation_from_tranmat(Eigen::Matrix4d &tran_mat)
     {
         Eigen::Vector3d translation_vec;
@@ -60,6 +64,7 @@ namespace lo
         return (translation_vec.norm());
     }
 
+    //提取4×4位姿矩阵中的yaw角度
     double Navigation::cal_heading_deg_from_tranmat(Eigen::Matrix4d &tran_mat)
     {
         Eigen::Vector3d euler_angle = (tran_mat.block<3, 3>(0, 0)).eulerAngles(0, 1, 2); //rotation axis : z,y',x''
@@ -78,6 +83,7 @@ namespace lo
         return yaw_deg;
     }
 
+    //提取4×4位姿矩阵中的旋转矩阵中的轴角中的角度
     double Navigation::cal_rotation_deg_from_tranmat(Eigen::Matrix4d &tran_mat)
     {
         Eigen::AngleAxisd rs(tran_mat.block<3, 3>(0, 0));
