@@ -1205,7 +1205,12 @@ class CRegistration : public CloudUtility<PointT>
 			source_feature_points_count += pc_beam_sc->points.size();
 
 		//Correspondence
-		boost::shared_ptr<pcl::Correspondences> corrs_ground(new pcl::Correspondences),corrs_pillar(new pcl::Correspondences),corrs_beam(new pcl::Correspondences),corrs_facade(new pcl::Correspondences),corrs_roof(new pcl::Correspondences),corrs_vertex(new pcl::Correspondences);
+		boost::shared_ptr<pcl::Correspondences> corrs_ground(new pcl::Correspondences),
+                                                corrs_pillar(new pcl::Correspondences),
+                                                corrs_beam(new pcl::Correspondences),
+                                                corrs_facade(new pcl::Correspondences),
+                                                corrs_roof(new pcl::Correspondences),
+                                                corrs_vertex(new pcl::Correspondences);
 
 		std::chrono::steady_clock::time_point tic_kdtree_iter = std::chrono::steady_clock::now();
 
@@ -1240,6 +1245,7 @@ class CRegistration : public CloudUtility<PointT>
 		LOG(INFO) << "Build Kdtree done in [" << build_kdtree_time.count() * 1000.0 << "] ms";
 
 		//Iteration Loop
+		//使用多次迭代优化的方式计算得到！！！！！！！
 		for (int i = 0; i < max_iter_num; i++)
 		{
 			std::chrono::steady_clock::time_point tic_iter = std::chrono::steady_clock::now();

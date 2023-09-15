@@ -668,6 +668,7 @@ int main(int argc, char **argv)
                               FLAGS_reg_voxel_size, initial_guess_tran, FLAGS_reg_intersection_filter_on);
             else
             {
+                //非常重要的函数！！！！
                 int registration_status_scan2scan = creg.mm_lls_icp(scan2scan_reg_con, max_iteration_num_s2s, reg_corr_dis_thre_init + add_length,
                                                                     converge_tran, converge_rot_d, reg_corr_dis_thre_min, dis_thre_update_rate,
                                                                     FLAGS_used_feature_type, FLAGS_corr_weight_strategy, z_xy_balance_ratio,

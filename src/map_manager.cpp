@@ -97,6 +97,7 @@ bool MapManager::update_local_map(cloudblock_Ptr local_map, cloudblock_Ptr last_
 
     //calculate bbx (global)
     //8.将local map在当前帧的所有点变换到世界坐标系下
+    // 测试
     pcl::transformPointCloud(*local_map->pc_raw, *local_map->pc_raw_w, local_map->pose_lo);
     cf.get_cloud_bbx(local_map->pc_raw_w, local_map->bound);
 
