@@ -267,11 +267,11 @@ int main(int argc, char **argv)
 
 
     //非常重要的几个数据结构！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！
-    DataIo<Point_T> dataio;
+    DataIo<Point_T> dataio;  //处理点云数据输入输出
     MapViewer<Point_T> mviewer(0.0, 1, 0, 1, 0, FLAGS_vis_intensity_scale, FLAGS_vis_initial_color_type, FLAGS_laser_vis_size); //downsampling ratio //N.B. default: map_viewer on, feature_viewer on, or the others off for the initialization
-        CFilter<Point_T> cfilter;
-    CRegistration<Point_T> creg;
-    MapManager mmanager;
+        CFilter<Point_T> cfilter;  //点云数据的滤波
+    CRegistration<Point_T> creg;  //点云配准
+    MapManager mmanager;  //地图管理
     //位姿变换相关的函数
     Navigation nav;
     //用于回环检测和优化
@@ -297,13 +297,13 @@ int main(int argc, char **argv)
     double time_count = 0.0;
     std::vector<std::string> filenames;
     dataio.batch_read_filenames_in_folder(pc_folder, "_filelist.txt", pc_format, filenames, FLAGS_frame_num_begin, FLAGS_frame_num_end, FLAGS_frame_step);
-    Matrix4ds poses_gt_body_cs;  //in vehicle body (gnssins) coordinate system
-    Matrix4ds poses_lo_body_cs;  //in vehicle body (gnssins) coordinate system
-    Matrix4ds poses_gt_lidar_cs; //in lidar coordinate system
-    Matrix4ds poses_lo_lidar_cs; //in lidar coordinate system
+    Matrix4ds poses_gt_body_cs;  //车体系（GNSS坐标系）中的地面真实姿态信息 in vehicle body (gnssins) coordinate system
+    Matrix4ds poses_lo_body_cs;  //车体系中激光测距仪（lidar）估计的姿态信息 in vehicle body (gnssins) coordinate system
+    Matrix4ds poses_gt_lidar_cs; //激光测距仪（lidar）坐标系中的地面真实姿态信息 in lidar coordinate system
+    Matrix4ds poses_lo_lidar_cs; //激光测距仪（lidar）坐标系中lidar估计的姿态信息 in lidar coordinate system
     Matrix4ds poses_lo_adjacent;
     Eigen::Matrix4d calib_mat; //the calib_mat is the transformation from lidar frame to body/camera frame (Tb_l)
-    Eigen::Matrix4d init_poses_gt_lidar_cs;
+    Eigen::Matrix4d init_poses_gt_lidar_cs; //初始化雷达系的地面真实姿态信息
     if (FLAGS_gt_in_lidar_frame)
     {
         poses_gt_lidar_cs = dataio.load_poses_from_transform_matrix(gt_body_pose_file, FLAGS_frame_num_begin, FLAGS_frame_num_end, FLAGS_frame_step);
@@ -317,7 +317,7 @@ int main(int argc, char **argv)
             poses_gt_body_cs = dataio.load_poses_from_transform_matrix(gt_body_pose_file, FLAGS_frame_num_begin, FLAGS_frame_num_end, FLAGS_frame_step);
     }
 
-    dataio.load_calib_mat(calib_file, calib_mat);
+    dataio.load_calib_mat(calib_file, calib_mat);  //标定的参数存入calib_mat
     int frame_num = filenames.size();
     std::vector<std::vector<float>> timing_array(frame_num); //unit: s
 
@@ -366,7 +366,7 @@ int main(int argc, char **argv)
     std::chrono::steady_clock::time_point tic_feature_extraction_init = std::chrono::steady_clock::now();
     //默认不进入这个条件,根据xy方向上距离的百分比进行滤波
     if (FLAGS_apply_dist_filter)
-        cfilter.dist_filter(cblock_target->pc_raw, FLAGS_min_dist_used, FLAGS_max_dist_used);
+        cfilter.dist_filter(cblock_target->pc_raw, FLAGS_min_dist_used, FLAGS_max_dist_used);  //注意这个dist_filter直接跳转的未必正确，注意参数个数
     //默认不进入这个条件
     if (FLAGS_vertical_ang_calib_on) //intrinsic angle correction
         cfilter.vertical_intrinsic_calibration(cblock_target->pc_raw, FLAGS_vertical_ang_correction_deg);

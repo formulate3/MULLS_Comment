@@ -84,7 +84,7 @@ public:
 		sacseg.setMaxIterations(max_iter);
 
 		sacseg.setInputCloud(cloud);
-		sacseg.segment(*inliers, *coefficients);
+		sacseg.segment(*inliers, *coefficients);  // 执行ransac算法
 
 		if (inliers->indices.size() == 0)
 		{

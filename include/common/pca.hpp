@@ -68,7 +68,7 @@ class PrincipleComponentAnalysis
 						 pcl::PointCloud<pcl::Normal>::Ptr &normals)
 	{
 		// Create the normal estimation class, and pass the input dataset to it;
-		pcl::NormalEstimationOMP<PointT, pcl::Normal> ne;
+		pcl::NormalEstimationOMP<PointT, pcl::Normal> ne; //一个支持多线程的法向量估计类
 		ne.setNumberOfThreads(omp_get_max_threads()); //More threads sometimes would not speed up the procedure
 		ne.setInputCloud(in_cloud);
 		// Create an empty kd-tree representation, and pass it to the normal estimation object;
@@ -297,7 +297,7 @@ class PrincipleComponentAnalysis
 							bool distance_adaptive_on = false, float unit_dist = 35.0)
 	{
 		//LOG(INFO) << "[" << in_cloud->points.size() << "] points used for PCA, pca down rate is [" << pca_down_rate << "]";
-		features.resize(in_cloud->points.size());
+		features.resize(in_cloud->points.size());  //调整features向量的大小，它的每个元素存储点云中一个点的PCA参数
 
 		omp_set_num_threads(min_(6, omp_get_max_threads()));
 #pragma omp parallel for												 //Multi-thread

@@ -37,7 +37,9 @@ using namespace std;
 
 //Select from these two (with/without intensity)
 //typedef pcl::PointNormal Point_T;
-typedef pcl::PointXYZINormal Point_T; //mind that 'curvature' here is used as ring number for spining scanner
+//pcl::PointXYZINormal 是PCL中定义的一种点的数据结构，表示一个带有 XYZ 坐标和法线信息的点
+//通过使用 typedef 将其定义为 Point_T，有助于提高代码的可读性和可维护性。在之后的代码中，可以使用 Point_T 来声明、定义和操作这种类型的点
+typedef pcl::PointXYZINormal Point_T; // mind that 'curvature' here is used as ring number for spining scanner
 //typedef ccn::PointXYZINTRL Point_T; //TODO : with time stamp, label and ring number property (a better way is to use the customed point type without template class)
 //typedef pcl::PointSurfel Point_T;
 
@@ -84,6 +86,8 @@ typedef pcl::PointCloud<pcl::FPFHSignature33> fpfh;
 typedef Eigen::Matrix<double, 6, 1> Vector6d;
 typedef Eigen::Matrix<double, 6, 6> Matrix6d;
 
+//通过 Matrix4ds 就可以声明一个向量，其中每个元素都是 Eigen 库的 Matrix4d 类型，
+//并使用了 Eigen 提供的对齐内存分配器。这种别名的使用可以提高代码的可读性和简洁性
 typedef std::vector<Eigen::Matrix4d, Eigen::aligned_allocator<Eigen::Matrix4d>> Matrix4ds;
 
 namespace lo

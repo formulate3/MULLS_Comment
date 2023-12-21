@@ -1732,7 +1732,7 @@ class DataIo : public CloudUtility<PointT>
 
     bool read_pc_cloud_block(cloudblock_Ptr &in_block, bool normalize_intensity_or_not = false)
     {
-        if (read_cloud_file(in_block->filename, in_block->pc_raw))
+        if (read_cloud_file(in_block->filename, in_block->pc_raw))  // 点云数据保存到pc_raw中
         {
             //根据点云， 得到点云的包围盒和中心点
             this->get_cloud_bbx_cpt(in_block->pc_raw, in_block->local_bound, in_block->local_cp);
@@ -1927,6 +1927,7 @@ class DataIo : public CloudUtility<PointT>
         return 1;
     }
 
+    // 加载标定矩阵
     bool load_calib_mat(const std::string calib_file, Eigen::Matrix4d &calib_mat)
     {
 
@@ -1969,6 +1970,8 @@ class DataIo : public CloudUtility<PointT>
     //mat(0-11) split with space
     //example:
     //1.000000e+00 9.043680e-12 2.326809e-11 5.551115e-17 9.043683e-12 1.000000e+00 2.392370e-10 3.330669e-16 2.326810e-11 2.392370e-10 9.999999e-01 -4.440892e-16
+    
+    //下面这个函数实际就是通过读入的KITTI数据文件，将其转为4*4的变换矩阵，这12个值对应变换矩阵的前12个值，后面四个固定为0，0，0，1
     Matrix4ds load_poses_from_transform_matrix(std::string filepath, int frame_begin = 0, int frame_end = 99999, int frame_step = 1)
     {
         double tmp[12];
@@ -2002,6 +2005,7 @@ class DataIo : public CloudUtility<PointT>
     // For OXTS Ground Truth pose
     // format:
     // index timestamp x y z q1 q2 q3 q4
+    // 类似的，通过这种数据格式获得变换矩阵
     Matrix4ds load_poses_from_pose_quat(std::string filepath, int frame_begin = 0, int frame_end = 99999, int frame_step = 1)
     {
         std::ifstream tmp_file(filepath);
@@ -2020,11 +2024,11 @@ class DataIo : public CloudUtility<PointT>
                 pose_qua_t temp_pose_quat;
                 Eigen::Matrix4d temp_pose;
 
-                std::istringstream in(line);
+                std::istringstream in(line); //一个从字符串中提取数据的输入流
 
                 in >> temp_index >> temp_time >> temp_pose_quat;
 
-                temp_pose = temp_pose_quat.GetMatrix();
+                temp_pose = temp_pose_quat.GetMatrix(); //将四元数转为变换矩阵
 
                 if ((count >= frame_begin) && (count <= frame_end) && ((count - frame_begin) % frame_step == 0))
                     pose_vec.push_back(temp_pose);
