@@ -1180,7 +1180,7 @@ class CFilter : public CloudUtility<PointT>
 				facade_far_count = 100 * facade_far_count / neighbor_total_count;
 				roof_far_count = 100 * roof_far_count / neighbor_total_count;
 
-                //根据周围点 各个特殊点的占用百分比来生成描述子
+                //根据周围点 各个特殊点的占用百分比来生成描述子(生成一个8位数，从左往右，没两个数是比例)
 				int descriptor = pillar_count * 1000000 + beam_count * 10000 + facade_count * 100 + roof_count; //the neighborhood discriptor (8 numbers)
 				int descriptor_1 = pillar_close_count * 1000000 + beam_close_count * 10000 + facade_close_count * 100 + roof_close_count;
 				int descriptor_2 = pillar_far_count * 1000000 + beam_far_count * 10000 + facade_far_count * 100 + roof_far_count;
@@ -1334,19 +1334,21 @@ class CFilter : public CloudUtility<PointT>
 		return true;
 	}
 
+	//  应该是基于曲率的非极大值抑制
 	bool non_max_suppress(std::vector<pca_feature_t> &features, pcl::PointIndicesPtr &indices,
 						  float nms_radius)
 	{
+		//  按曲率进行排序
 		std::sort(features.begin(), features.end(), [](const pca_feature_t &a, const pca_feature_t &b) { return a.curvature > b.curvature; });
 
 		pcl::PointCloud<pcl::PointNormal>::Ptr pointCloud(new pcl::PointCloud<pcl::PointNormal>());
 
-		std::set<int, std::less<int>> unVisitedPtId;
+		std::set<int, std::less<int>> unVisitedPtId;  //保存还没读取或删除的id，在下面的do(while)循环中，这个为空说明进行完了极大值抑制
 		std::set<int, std::less<int>>::iterator iterUnseg;
 		for (int i = 0; i < features.size(); ++i)
 		{
 			unVisitedPtId.insert(i);
-			pointCloud->points.push_back(features[i].pt);
+			pointCloud->points.push_back(features[i].pt);  //.pt保存坐标信息(x,y,z)
 		}
 
 		pcl::KdTreeFLANN<pcl::PointNormal> tree;
@@ -1370,7 +1372,8 @@ class CFilter : public CloudUtility<PointT>
 
 			float curvature_non_max_radius = nms_radius;
 
-			tree.radiusSearch(features[id].pt, curvature_non_max_radius, search_indices, distances);
+			//大致就是一个球体范围内的最近邻，提取对应的indices，后面的erase来实现去除极大值点周围的点
+			tree.radiusSearch(features[id].pt, curvature_non_max_radius, search_indices, distances);  
 
 			for (int i = 0; i < search_indices.size(); ++i)
 			{
@@ -2148,6 +2151,7 @@ class CFilter : public CloudUtility<PointT>
 
 				if (cloud_features[i].linear_2 > edge_thre)
 				{
+					//  cloud_features[i].vectors.principalDirection.z()是第一个特征向量v的z轴上的数
 					if (std::abs(cloud_features[i].vectors.principalDirection.z()) > linear_vertical_sin_high_thre)
 					{
 						pca_estimator.assign_normal(cloud_in->points[i], cloud_features[i], false);
@@ -2168,6 +2172,7 @@ class CFilter : public CloudUtility<PointT>
 
 					if (!sharpen_with_nms && cloud_features[i].linear_2 > edge_thre_down)
 					{
+						//  加入对应的下采样点云
 						if (std::abs(cloud_features[i].vectors.principalDirection.z()) > linear_vertical_sin_high_thre)
 							cloud_pillar_down->points.push_back(cloud_in->points[i]);
 						else if (std::abs(cloud_features[i].vectors.principalDirection.z()) < linear_vertical_sin_low_thre && cloud_in->points[i].z < beam_height_max)
@@ -2282,7 +2287,7 @@ class CFilter : public CloudUtility<PointT>
         //3.1对pillar cloud_facade beam cloud_roof 特征点进行非最大值抑制
 		if (sharpen_with_nms)
 		{
-			float nms_radius = 0.25 * neighbor_searching_radius;
+			float nms_radius = 0.25 * neighbor_searching_radius;  //是之前算pca参数时的半径的1/4
 #pragma omp parallel sections
 			{
 #pragma omp section

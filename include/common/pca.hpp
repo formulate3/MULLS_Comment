@@ -167,7 +167,7 @@ class PrincipleComponentAnalysis
 			features[i].pt_num = search_indices.size();
 
 			get_pca_feature(in_cloud, search_indices, features[i]);
-			assign_normal(in_cloud->points[i], features[i]);
+			assign_normal(in_cloud->points[i], features[i]);  //分配法向量
 		}
 
 		return true;
@@ -305,13 +305,13 @@ class PrincipleComponentAnalysis
 		{
 			// if (i % pca_down_rate == 0) {//this way is much slower
 			std::vector<int> search_indices_used; //points would be stored in sequence (from the closest point to the farthest point within the neighborhood)
-			std::vector<int> search_indices;	  //point index vector
+			std::vector<int> search_indices;	  //point index vector,半径范围内搜到的最近k个点的索引(可能小于k个)
 			std::vector<float> squared_distances; //distance vector
 
-			float neighborhood_r = radius;
-			int neighborhood_k = nearest_k;
+			float neighborhood_r = radius;  //半径范围r
+			int neighborhood_k = nearest_k;  //搜索最近的k个点
 
-			if (distance_adaptive_on)
+			if (distance_adaptive_on)  //默认不进去
 			{
 				double dist = std::sqrt(in_cloud->points[i].x * in_cloud->points[i].x +
 										in_cloud->points[i].y * in_cloud->points[i].y +
@@ -341,7 +341,7 @@ class PrincipleComponentAnalysis
 					features[i].close_to_query_point[j] = false;
 			}
 
-			get_pca_feature(in_cloud, search_indices, features[i]);
+			get_pca_feature(in_cloud, search_indices, features[i]);  //获取特征值、特征向量等的pca参数
 
 			if (features[i].pt_num > min_k)
 				assign_normal(in_cloud->points[i], features[i]);
@@ -398,22 +398,22 @@ class PrincipleComponentAnalysis
 
 		typename pcl::PointCloud<PointT>::Ptr selected_cloud(new pcl::PointCloud<PointT>());
 		for (int i = 0; i < pt_num; ++i)
-			selected_cloud->points.push_back(in_cloud->points[search_indices[i]]);
+			selected_cloud->points.push_back(in_cloud->points[search_indices[i]]);  //提取指定索引的点
 
 		pcl::PCA<PointT> pca_operator;
 		pca_operator.setInputCloud(selected_cloud);
 
 		// Compute eigen values and eigen vectors
-		Eigen::Matrix3f eigen_vectors = pca_operator.getEigenVectors();
+		Eigen::Matrix3f eigen_vectors = pca_operator.getEigenVectors();  //这三列是对应的特征向量
 		Eigen::Vector3f eigen_values = pca_operator.getEigenValues();
 
 		feature.vectors.principalDirection = eigen_vectors.col(0);
-		feature.vectors.normalDirection = eigen_vectors.col(2);
+		feature.vectors.normalDirection = eigen_vectors.col(2);  //其中最后一列是法向量,详见论文中
 
 		feature.vectors.principalDirection.normalize();
 		feature.vectors.normalDirection.normalize();
 
-		feature.values.lamada1 = eigen_values(0);
+		feature.values.lamada1 = eigen_values(0);  //特征值
 		feature.values.lamada2 = eigen_values(1);
 		feature.values.lamada3 = eigen_values(2);
 
