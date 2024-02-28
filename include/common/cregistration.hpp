@@ -428,7 +428,7 @@ class CRegistration : public CloudUtility<PointT>
 
 		//first get descriptor
 		//std::vector<std::vector<int>> target_kpts_descriptors;
-		std::vector<Eigen::VectorXf, Eigen::aligned_allocator<Eigen::VectorXf>> target_kpts_descriptors;
+		std::vector<Eigen::VectorXf, Eigen::aligned_allocator<Eigen::VectorXf>> target_kpts_descriptors;  //目标点云描述子
 
 		float intensity_min = FLT_MAX;
 		float intensity_max = 0;
@@ -447,7 +447,7 @@ class CRegistration : public CloudUtility<PointT>
 			int temp_descriptor_close = (int)target_kpts->points[i].normal[0];
 			int temp_descriptor_far = (int)target_kpts->points[i].normal[1];
 			// neighborhood category with its distance to the query point
-			temp_descriptor(0) = temp_descriptor_close / 1000000;
+			temp_descriptor(0) = temp_descriptor_close / 1000000;     //0,1,2,3分别是pillar,beam,facade和roof的百分比
 			temp_descriptor(1) = (temp_descriptor_close % 1000000) / 10000;
 			temp_descriptor(2) = (temp_descriptor_close % 10000) / 100;
 			temp_descriptor(3) = temp_descriptor_close % 100;
@@ -464,7 +464,7 @@ class CRegistration : public CloudUtility<PointT>
 			target_kpts_descriptors.push_back(temp_descriptor);
 		}
 
-		std::vector<Eigen::VectorXf, Eigen::aligned_allocator<Eigen::VectorXf>> source_kpts_descriptors;
+		std::vector<Eigen::VectorXf, Eigen::aligned_allocator<Eigen::VectorXf>> source_kpts_descriptors;  //源点云描述子
 		for (int i = 0; i < source_kpts_num; i++)
 		{
 			Eigen::VectorXf temp_descriptor(11);
@@ -496,7 +496,7 @@ class CRegistration : public CloudUtility<PointT>
     
 		omp_set_num_threads(min_(6, omp_get_max_threads())); //TODO: speed up
 #pragma omp parallel for  //Multi-thread
-		for (int i = 0; i < target_kpts_num; i++)
+		for (int i = 0; i < target_kpts_num; i++)  //计算第i个target点云和第j个source点云描述子的距离
 		{
 			for (int j = 0; j < source_kpts_num; j++)
 			{
@@ -526,11 +526,11 @@ class CRegistration : public CloudUtility<PointT>
 					if (dist_table[i][j] < min_dist_row)
 					{
 						min_dist_row = dist_table[i][j];
-						min_dist_col_index = j;
+						min_dist_col_index = j;  //存储与第i个target点云ncc距离最小的source点云的下标
 					}
 				}
 				bool refined_corr = true;
-				if (reciprocal_on) //reciprocal nearest neighbor correspondnece
+				if (reciprocal_on) //reciprocal nearest neighbor correspondnece 互近邻对应，确保互相都是ncc距离最近的
 				{
 					for (int j = 0; j < target_kpts_num; j++)
 					{
@@ -541,7 +541,7 @@ class CRegistration : public CloudUtility<PointT>
 						}
 					}
 				}
-				if (refined_corr)
+				if (refined_corr)  //输出匹配结果
 				{
 					//LOG(INFO) << "[" << i << "] - [" << min_dist_col_index << "]:" << min_dist_row;
 					target_corrs->points.push_back(target_kpts->points[i]);
@@ -610,7 +610,8 @@ class CRegistration : public CloudUtility<PointT>
 		
         int N = target_pts->points.size();
 
-	    pcl::registration::CorrespondenceRejectorSampleConsensus<PointT> ransac_rej;
+	    pcl::registration::CorrespondenceRejectorSampleConsensus<PointT> ransac_rej;  //这个库利用ransac方法实现识别内点、拒绝离群点
+		                                                                              //
 		ransac_rej.setInputSource(source_pts);
 		ransac_rej.setInputTarget(target_pts);
 		ransac_rej.setInlierThreshold(noise_bound);
@@ -1185,13 +1186,13 @@ class CRegistration : public CloudUtility<PointT>
                                        initial_guess); //apply initial guess
         
 		//Filter the point cloud laying far away from the overlapping region
-        //3.
+        //3.交叉滤波，去除源点云中与目标点云在局部坐标系内没有交集的点
 		if (apply_intersection_filter && !apply_motion_undistortion_while_registration)
 			intersection_filter(registration_cons, pc_ground_tc, pc_pillar_tc, pc_beam_tc, pc_facade_tc, pc_roof_tc, pc_vertex_tc,
 								pc_ground_sc, pc_pillar_sc, pc_beam_sc, pc_facade_sc, pc_roof_sc, pc_vertex_sc);
 
 		//Downsample source cloud if its point number is larger than target's
-        //4.对source cloud进行将采样
+        //4.对source cloud进行降采样
 		if (keep_less_source_points && !apply_motion_undistortion_while_registration)
 			keep_less_source_pts(pc_ground_tc, pc_pillar_tc, pc_beam_tc, pc_facade_tc, pc_roof_tc, pc_vertex_tc,
 								 pc_ground_sc, pc_pillar_sc, pc_beam_sc, pc_facade_sc, pc_roof_sc, pc_vertex_sc);
@@ -1249,7 +1250,7 @@ class CRegistration : public CloudUtility<PointT>
 		for (int i = 0; i < max_iter_num; i++)
 		{
 			std::chrono::steady_clock::time_point tic_iter = std::chrono::steady_clock::now();
-			// Target (Dense): Cloud1,  Source (Sparse): Cloud2
+			// Target (Dense): Cloud1,  Source (Sparse): Cloud2  上面对源点云的下采样使得source是稀疏的
 			if (i == 0)
 				LOG(INFO) << "Apply initial guess transformation\n"
 						  << initial_guess;
@@ -1267,7 +1268,7 @@ class CRegistration : public CloudUtility<PointT>
 				batch_transform_feature_points(pc_ground_sc, pc_pillar_sc, pc_beam_sc, pc_facade_sc, pc_roof_sc, pc_vertex_sc, initial_guess);
 			}
 			else
-				batch_transform_feature_points(pc_ground_sc, pc_pillar_sc, pc_beam_sc, pc_facade_sc, pc_roof_sc, pc_vertex_sc, TempTran);
+				batch_transform_feature_points(pc_ground_sc, pc_pillar_sc, pc_beam_sc, pc_facade_sc, pc_roof_sc, pc_vertex_sc, TempTran);  //利用上次迭代求得的解TempTran对source点云进行变换
 
 			std::chrono::steady_clock::time_point toc_1_iter = std::chrono::steady_clock::now();
 			std::chrono::duration<double> update_time = std::chrono::duration_cast<std::chrono::duration<double>>(toc_1_iter - tic_iter);
@@ -1275,6 +1276,7 @@ class CRegistration : public CloudUtility<PointT>
 
 			// First, find coorespondences (nearest neighbor [for line] or normal shooting [for plane])
 			// We need to check the normal compatibility of the plane correspondences
+			// 并行的进行特征匹配
 			#pragma omp parallel sections
 			{
 				#pragma omp section
@@ -1312,6 +1314,7 @@ class CRegistration : public CloudUtility<PointT>
 			int neccessary_corr_num = (*corrs_pillar).size() + (*corrs_beam).size() + (*corrs_facade).size();
 			neccessary_corr_ratio = 1.0 * neccessary_corr_num / source_feature_points_count;
 
+			// 上面三个值要达标，总匹配点数、pillar和beam和facade的匹配点数和、这两个的比值均要大于最小阈值，否则return-2：匹配点过少
 			if (total_corr_num < min_total_corr_num || neccessary_corr_num < min_neccessary_corr_num || neccessary_corr_ratio < min_neccessary_corr_ratio)
 			{
 				process_code = -2;
@@ -1321,10 +1324,12 @@ class CRegistration : public CloudUtility<PointT>
 			}
 
 			//update (decrease correspondence threshold)
+			//更新距离匹配阈值,更新的距离阈值按默认参数dis_thre_update_rate=1.1来说是越来越小的，但不会小于最小阈值
 			update_corr_dist_thre(dis_thre_ground, dis_thre_pillar, dis_thre_beam, dis_thre_facade, dis_thre_roof, dis_thre_vertex,
 								  dis_thre_update_rate, dis_thre_min);
 
 			//Estimate Transformation
+			// 公式基本都在这了,transform_x获取估计的6个参数
 			multi_metrics_lls_tran_estimation(pc_ground_sc, pc_ground_tc, corrs_ground,
 											  pc_pillar_sc, pc_pillar_tc, corrs_pillar,
 											  pc_beam_sc, pc_beam_tc, corrs_beam,
@@ -1340,6 +1345,7 @@ class CRegistration : public CloudUtility<PointT>
 			//....  //1111: all in
 			
 			//transform_x [6x1]: tx, ty, tz, roll, pitch, yaw --> Transformation matrix TempTran [4x4]
+			//转换为4x4的变换矩阵
 			construct_trans_a(transform_x(0), transform_x(1), transform_x(2), transform_x(3), transform_x(4), transform_x(5), TempTran);
 
 			LOG(INFO) << "tx(m):" << transform_x(0) << ",ty(m):" << transform_x(1) << ",tz(m):" << transform_x(2)
@@ -1355,6 +1361,7 @@ class CRegistration : public CloudUtility<PointT>
 			Eigen::AngleAxisd rs(TempTran.block<3, 3>(0, 0));
 
 			//LOG(INFO) << "translation(m):" << ts.norm() << " , rotation(deg):" << std::abs(rs.angle()) / M_PI * 180.0;
+			//判断平移或旋转是否过大，超出阈值则停止迭代,return：-1
 			if (ts.norm() > max_bearable_translation || std::abs(rs.angle()) > max_bearable_rotation)
 			{
 				process_code = -1;
@@ -1363,12 +1370,13 @@ class CRegistration : public CloudUtility<PointT>
 				break;
 			}
 
-			//Judge converged or not
+			//Judge converged or not 判断是否收敛
+			//达到迭代次数或平移和旋转均小于收敛阈值
 			if (i == max_iter_num - 1 || (i > 2 && ts.norm() < converge_translation && std::abs(rs.angle()) < converge_rotation))
 			{
 				LOG(INFO) << "Converged. Calculate statistic information, break out.";
 
-				//Calculate converged residual and information matrix
+				//Calculate converged residual and information matrix  后验方差rou*rou=sigma_square_post
 				if (get_multi_metrics_lls_residual(pc_ground_sc, pc_ground_tc, corrs_ground,
 												   pc_pillar_sc, pc_pillar_tc, corrs_pillar,
 												   pc_beam_sc, pc_beam_tc, corrs_beam,
@@ -1408,9 +1416,9 @@ class CRegistration : public CloudUtility<PointT>
 
 			//Update the transformation matrix till-now
 			initial_guess = TempTran * initial_guess;
-		}
+		}  //迭代
 
-		initial_guess = TempTran * initial_guess; //Update the last iteration's transformation
+		initial_guess = TempTran * initial_guess; //Update the last iteration's transformation 因为最后一次迭代break出来时还没有进行line1418这一步
 
 		registration_cons.Trans1_2 = initial_guess;
 #if 0
@@ -1424,7 +1432,7 @@ class CRegistration : public CloudUtility<PointT>
 				(registration_cons.Trans1_2.block<3, 3>(0, 0) - Idenity3d) * local_shift_mat.block<3, 1>(0, 3) + registration_cons.Trans1_2.block<3, 1>(0, 3);
 #endif
 
-		//Multiple evalualtion metrics
+		//Multiple evalualtion metrics评估相关
 		registration_cons.information_matrix = information_matrix; //Final information matrix
 		registration_cons.sigma = std::sqrt(sigma_square_post);	//Final unit weight standard deviation
 		registration_cons.confidence = neccessary_corr_ratio;	  //posterior unground points overlapping ratio
@@ -1438,7 +1446,7 @@ class CRegistration : public CloudUtility<PointT>
 		LOG(INFO) << "Final tran. matrix:\n"
 				  << registration_cons.Trans1_2;
 
-		//free mannually
+		//free mannually释放内存
 		corrs_ground.reset(new pcl::Correspondences);
 		corrs_pillar.reset(new pcl::Correspondences);
 		corrs_beam.reset(new pcl::Correspondences);
@@ -1737,11 +1745,11 @@ class CRegistration : public CloudUtility<PointT>
 		if (Source_Cloud->points.size() >= K_min &&
 			Target_Cloud->points.size() >= K_min)
 		{
-			if (normal_shooting_on) // Normal Shooting
+			if (normal_shooting_on) // Normal Shooting  面特征点才可能做法线拟合:
 			{
 				corr_est_ns.setInputSource(Source_Cloud);
 				corr_est_ns.setInputTarget(Target_Cloud);
-				corr_est_ns.setSourceNormals(Source_Cloud);
+				corr_est_ns.setSourceNormals(Source_Cloud);                               //是源点云的法线
 				corr_est_ns.setSearchMethodTarget(target_kdtree, true);					  //saving the time of rebuilding kd-tree
 				corr_est_ns.setKSearch(normal_shooting_candidate_count);				  // Among the K nearest neighbours find the one with minimum perpendicular distance to the normal
 				corr_est_ns.determineCorrespondences(*Corr, filter_dis_times * dis_thre); //base on KDtreeNSearch
@@ -1762,7 +1770,7 @@ class CRegistration : public CloudUtility<PointT>
 
 			//Filter outlier source points (they would not appear throughout the registration anymore)
 #if 1
-			if (Source_Cloud->points.size() >= K_filter_distant_point)
+			if (Source_Cloud->points.size() >= K_filter_distant_point) //源点云个数过多，滤除异常点
 			{
 				int count = 0;
 
@@ -1794,9 +1802,9 @@ class CRegistration : public CloudUtility<PointT>
 					else
 						iter++;
 				}
-				Corr->resize(count);
+				Corr->resize(count);  //Corr中确保源点云中的每个点只与目标点云中的一个点对应
 
-				Source_Cloud_f->points.swap(Source_Cloud->points);
+				Source_Cloud_f->points.swap(Source_Cloud->points);  //输出新的源点云
 				//Target_Cloud_f->points.swap(Target_Cloud->points);
 				std::vector<unsigned int>().swap(duplicate_check_table);
 			}
@@ -1899,6 +1907,7 @@ class CRegistration : public CloudUtility<PointT>
 		int m4 = (*Corr_Beam).size();
 		int m5 = (*Corr_Vertex).size();
 
+		// w(balanced),这里为什么是-m4,论文中是+m4啊？
 		if (weight_strategy[0] == '1') //x,y,z directional balanced weighting (guarantee the observability of the scene)
 		{
 			w_ground = max_(0.01, z_xy_balance_ratio * (m2 + 2 * m3 - m4) / (0.0001 + 2.0 * m1)); // x <-> y <-> z
@@ -1912,7 +1921,7 @@ class CRegistration : public CloudUtility<PointT>
 		bool dist_weight = false;
 		bool residual_weight = false;
 		bool intensity_weight = false;
-		int iter_thre = 2; //the residual based weighting would only be applied after this number of iteration
+		int iter_thre = 2; //(残差加权只会在这个迭代次数之后应用)the residual based weighting would only be applied after this number of iteration
 		if (weight_strategy[1] == '1' && iter_num > iter_thre) //weight according to residual 
 			residual_weight = true;
 		if (weight_strategy[2] == '1') //weight according to distance
@@ -1920,6 +1929,7 @@ class CRegistration : public CloudUtility<PointT>
 		if (weight_strategy[3] == '1') //weight according to intensity
 			intensity_weight = true;
 
+		//下面三种方法分别算出ATPA和ATPb
 		//point to plane
 		pt2pl_lls_summation(Source_Ground, Target_Ground, Corr_Ground, ATPA, ATPb, iter_num, w_ground, dist_weight, residual_weight, intensity_weight, pt2pl_residual_window);
 		pt2pl_lls_summation(Source_Facade, Target_Facade, Corr_Facade, ATPA, ATPb, iter_num, w_facade, dist_weight, residual_weight, intensity_weight, pt2pl_residual_window);
@@ -1930,7 +1940,7 @@ class CRegistration : public CloudUtility<PointT>
 		//point to point
 		pt2pt_lls_summation(Source_Vertex, Target_Vertex, Corr_Vertex, ATPA, ATPb, iter_num, w_vertex, dist_weight, residual_weight, intensity_weight, pt2pt_residual_window);
 
-		//ATPA is a symmetric matrix
+		//ATPA is a symmetric matrix (对称矩阵)
 		ATPA.coeffRef(6) = ATPA.coeffRef(1);
 		ATPA.coeffRef(12) = ATPA.coeffRef(2);
 		ATPA.coeffRef(13) = ATPA.coeffRef(8);
@@ -1962,6 +1972,7 @@ class CRegistration : public CloudUtility<PointT>
 
 		Eigen::Vector3d euler_angle(unknown_x(3), unknown_x(4), unknown_x(5));
 		Eigen::Matrix3d Jacobi;
+		//雅可比矩阵计算
 		get_quat_euler_jacobi(euler_angle, Jacobi);
 
 		//Qxx=(ATPA)^-1
@@ -1969,6 +1980,7 @@ class CRegistration : public CloudUtility<PointT>
 		cofactor_matrix = ATPA.inverse();
 
 		//convert to the cofactor matrix with regard to quaternion from euler angle
+		//将协方差矩阵从欧拉角表示转换为四元数
 		cofactor_matrix.block<3, 3>(3, 3) = Jacobi * cofactor_matrix.block<3, 3>(3, 3) * Jacobi.transpose();
 		cofactor_matrix.block<3, 3>(0, 3) = cofactor_matrix.block<3, 3>(0, 3) * Jacobi.transpose();
 		cofactor_matrix.block<3, 3>(3, 0) = Jacobi * cofactor_matrix.block<3, 3>(3, 0);
@@ -2081,6 +2093,7 @@ class CRegistration : public CloudUtility<PointT>
 	{
 		for (int i = 0; i < (*Corr).size(); i++)
 		{
+			// 获得源点云和目标点云的索引
 			int s_index, t_index;
 			s_index = (*Corr)[i].index_query;
 			t_index = (*Corr)[i].index_match;
@@ -2922,9 +2935,10 @@ class CRegistration : public CloudUtility<PointT>
 		cfilter.get_cloud_bbx(pc_ground_sc, source_init_guess_bbxs[0]);
 		cfilter.get_cloud_bbx(pc_pillar_sc, source_init_guess_bbxs[1]);
 		cfilter.get_cloud_bbx(pc_facade_sc, source_init_guess_bbxs[2]);
-		cfilter.merge_bbx(source_init_guess_bbxs, source_init_guess_bbx_merged);//求所有box的并集
+		cfilter.merge_bbx(source_init_guess_bbxs, source_init_guess_bbx_merged);//这两个参数分别是输入和输出；求所有box的并集,取两个box的x,y,z的最大最小值
         //
-		cfilter.get_intersection_bbx(registration_cons.block1->local_bound, source_init_guess_bbx_merged, intersection_bbx, bbx_pad);
+		cfilter.get_intersection_bbx(registration_cons.block1->local_bound, source_init_guess_bbx_merged, intersection_bbx, bbx_pad);//前两个参数是输入，第三个是输出，取两个box的交集
+		//过滤包围盒外的点云
 		cfilter.get_cloud_pair_intersection(intersection_bbx,
 											pc_ground_tc, pc_pillar_tc, pc_beam_tc, pc_facade_tc, pc_roof_tc, pc_vertex_tc,
 											pc_ground_sc, pc_pillar_sc, pc_beam_sc, pc_facade_sc, pc_roof_sc, pc_vertex_sc);

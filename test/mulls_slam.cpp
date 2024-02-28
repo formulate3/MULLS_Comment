@@ -317,7 +317,7 @@ int main(int argc, char **argv)
             poses_gt_body_cs = dataio.load_poses_from_transform_matrix(gt_body_pose_file, FLAGS_frame_num_begin, FLAGS_frame_num_end, FLAGS_frame_step);
     }
 
-    dataio.load_calib_mat(calib_file, calib_mat);  //标定的参数存入calib_mat
+    dataio.load_calib_mat(calib_file, calib_mat);  //标定的参数存入calib_mat,4*4
     int frame_num = filenames.size();
     std::vector<std::vector<float>> timing_array(frame_num); //unit: s
 
@@ -355,7 +355,7 @@ int main(int argc, char **argv)
     dataio.write_lo_pose_overwrite(first_frame_body, output_lo_body_pose_file);
 
     poses_lo_body_cs.push_back(first_frame_body);//等于单位矩阵
-    poses_lo_lidar_cs.push_back(cblock_target->pose_lo);//等于单位矩阵
+    poses_lo_lidar_cs.push_back(cblock_target->pose_lo);//等于单位矩阵，cblock_target->pose_lo和->pose_gt都是相对于lidar系的
     if (FLAGS_gt_in_lidar_frame)
         poses_gt_lidar_cs[0] = cblock_target->pose_gt;
     else
@@ -395,8 +395,8 @@ int main(int argc, char **argv)
         timing_array[0].push_back(0.0);
 
 
-    initial_guess_tran(0, 3) = 0.5;     //initialization
-    for (int i = 1; i < frame_num; i++) //throughout all the used frames
+    initial_guess_tran(0, 3) = 0.5;     //initialization 为什么这样初始化？？
+    for (int i = 1; i < frame_num; i++) //throughout all the used frames 开始循环每一帧，target始终是source的前一帧
     {
         std::chrono::steady_clock::time_point tic = std::chrono::steady_clock::now();
         accu_frame_count_wo_opt++;
@@ -413,7 +413,7 @@ int main(int argc, char **argv)
             poses_gt_body_cs[i] = poses_gt_body_cs[0].inverse() * poses_gt_body_cs[i]; //according to the first frame
         }
 
-        //1.读取第一真点云数据######################################################################
+        //1.读取当前帧点云数据######################################################################
         dataio.read_pc_cloud_block(cblock_source);//根据文件读取点云， 得到点云的包围盒和中心点
 
         std::chrono::steady_clock::time_point toc_import_pc = std::chrono::steady_clock::now();
@@ -432,7 +432,7 @@ int main(int argc, char **argv)
         else if (FLAGS_motion_compensation_method == 2)                                   //calculate from azimuth
             cfilter.get_pts_timestamp_ratio_in_frame(cblock_source->pc_raw, false, 90.0); //HESAI Lidar: 90.0 (y+ axis, clockwise), Velodyne Lidar: 180.0
 
-        //作者这这里提供了多种点云注册方法，需要根据不同的注册方法进行预处理
+        //作者这这里提供了多种点云配准方法，需要根据不同的配准方法进行预处理
         if (!strcmp(FLAGS_baseline_reg_method.c_str(), "ndt"))                            //baseline_method
             cfilter.voxel_downsample(cblock_source->pc_raw, cblock_source->pc_down, FLAGS_cloud_down_res);
         else if (!strcmp(FLAGS_baseline_reg_method.c_str(), "gicp")) //baseline_method
@@ -452,13 +452,13 @@ int main(int argc, char **argv)
         std::chrono::steady_clock::time_point toc_feature_extraction = std::chrono::steady_clock::now();
 
         //update local map
-        if (i % FLAGS_local_map_recalculation_frequency == 0)
+        if (i % FLAGS_local_map_recalculation_frequency == 0)  // 可以控制重新计算局部地图特征的频率
             local_map_recalculate_feature_on = true;
         else
             local_map_recalculate_feature_on = false;
 
         //FLAGS_initial_scan2scan_frame_num  = 2
-        //3.前两帧点云叠加形成local map######################################################################
+        //3.叠加形成local map,不同的是前几帧不会进行动态物体剔除，后面也要看FLAGS_apply_map_based_dynamic_removal参数的取值##
         if (i > FLAGS_initial_scan2scan_frame_num + 1)
             mmanager.update_local_map(cblock_local_map, cblock_target, local_map_radius, local_map_max_pt_num, vertex_keeping_num, append_frame_radius,
                                       FLAGS_apply_map_based_dynamic_removal, FLAGS_used_feature_type, dynamic_removal_radius, dynamic_dist_thre_min, current_linear_velocity * 0.15,
@@ -473,12 +473,12 @@ int main(int argc, char **argv)
             seg_new_submap = false;
         std::chrono::steady_clock::time_point toc_update_map = std::chrono::steady_clock::now();
 
-        if (seg_new_submap) //add nodes and edges in pose graph for pose graph optimization (pgo)
+        if (seg_new_submap) //add nodes and edges in pose graph for pose graph optimization (pgo) 可以增加新子图，增加节点和边
         {
             LOG(INFO) << "Create new submap [" << submap_count << "]";
-            cloudblock_Ptr current_cblock_local_map(new cloudblock_t(*cblock_local_map, true));
+            cloudblock_Ptr current_cblock_local_map(new cloudblock_t(*cblock_local_map, true));  //当前局部地图
             current_cblock_local_map->strip_id = 0;
-            current_cblock_local_map->id_in_strip = submap_count;
+            current_cblock_local_map->id_in_strip = submap_count;//第几个子图
             current_cblock_local_map->last_frame_index = i - 1; //save the last frame index
             current_cblock_local_map->unique_id = cblock_target->unique_id;
             current_cblock_local_map->pose_init = current_cblock_local_map->pose_lo;                                            //init guess for pgo
@@ -488,7 +488,7 @@ int main(int argc, char **argv)
             if (submap_count == 0)
                 current_cblock_local_map->pose_fixed = true; //fixed the first submap
             LOG(INFO) << "Submap node index [" << submap_count << "]";
-            cblock_submaps.push_back(current_cblock_local_map); //add new node
+            cblock_submaps.push_back(current_cblock_local_map); //add new node 增加新的节点(节点是各个局部地图)
             submap_count++;
             cooling_index--;
             if (submap_count > 1)
@@ -506,41 +506,43 @@ int main(int argc, char **argv)
                                                                   pgo_edges[current_edge_index].Trans1_2, FLAGS_reg_intersection_filter_on, false,
                                                                   FLAGS_normal_shooting_on, 1.5 * FLAGS_normal_bearing, true, true, FLAGS_post_sigma_thre); //use its information matrix for pgo
 
-                if (registration_status_map2map <= 0 && FLAGS_real_time_viewer_on) //candidate wrong registration
+                if (registration_status_map2map <= 0 && FLAGS_real_time_viewer_on) //candidate wrong registration 可能配准错误
                     mviewer.keep_visualize(reg_viewer);
                 else
                     LOG(INFO) << "map to map registration done\nsubmap [" << pgo_edges[current_edge_index].block1->id_in_strip << "] - [" << pgo_edges[current_edge_index].block2->id_in_strip << "]:\n"
                               << pgo_edges[current_edge_index].Trans1_2;
-                if (pgo_edges[current_edge_index].sigma > FLAGS_map2map_reliable_sigma_thre)                                                                          // if the estimated posterior standard deviation of map to map registration is a bit large
+                if (pgo_edges[current_edge_index].sigma > FLAGS_map2map_reliable_sigma_thre)                                         // 如果map to map配准的估计后验标准差过大 if the estimated posterior standard deviation of map to map registration is a bit large
                     pgo_edges[current_edge_index].Trans1_2 = pgo_edges[current_edge_index].block1->pose_lo.inverse() * pgo_edges[current_edge_index].block2->pose_lo; //still use the scan-to-map odometry's prediction (but we will keep the information matrix)
                 else
                 {
                     LOG(WARNING) << "We would trust the map to map registration, update current pose";                                  //the edge's transformation and information are already calculted via the last map-to-map registration
-                    cblock_local_map->pose_lo = pgo_edges[current_edge_index].block1->pose_lo * pgo_edges[current_edge_index].Trans1_2; //update current local map's pose
+                    cblock_local_map->pose_lo = pgo_edges[current_edge_index].block1->pose_lo * pgo_edges[current_edge_index].Trans1_2; //update current local map's pose 
                     cblock_target->pose_lo = cblock_local_map->pose_lo;                                                                 //update target frame
                     cblock_submaps[submap_count - 1]->pose_lo = cblock_local_map->pose_lo;                                              //update the pgo node (submap)
                     cblock_submaps[submap_count - 1]->pose_init = cblock_local_map->pose_lo;                                            //update the initial guess of pgo node (submap)
                 }
                 pgo_edges[current_edge_index].information_matrix = FLAGS_adjacent_edge_weight_ratio * pgo_edges[current_edge_index].information_matrix; //TODO: fix (change the weight of the weight of adjacent edges)
                 constraints current_registration_edges;
-                if (cooling_index < 0) //find registration edges and then do pgo
+                if (cooling_index < 0) //find registration edges and then do pgo  寻找配准边并进行pgo
                 {
                     bool overall_loop_searching_on = false;
                     int reg_edge_count = 0;
+                    // 找到可能的配准边
                     if (accu_frame_count_wo_opt > FLAGS_num_frame_thre_large_drift && FLAGS_overall_loop_closure_searching_on) //expand the loop closure searching area
                     {
-                        overall_loop_searching_on = true;
+                        overall_loop_searching_on = true;  //进行全局回环检测
                         reg_edge_count = confinder.find_overlap_registration_constraint(cblock_submaps, current_registration_edges, 1.5 * FLAGS_neighbor_search_dist, 0.0, FLAGS_min_submap_id_diff, true, 20);
                     }
                     else //standard loop closure searching
                         reg_edge_count = confinder.find_overlap_registration_constraint(cblock_submaps, current_registration_edges, FLAGS_neighbor_search_dist, FLAGS_min_iou_thre, FLAGS_min_submap_id_diff, true);
                     int reg_edge_successful_count = 0;
-                    bool stable_reg_found = false;
+                    bool stable_reg_found = false; //false表示全局配准,true为局部配准
                     //suppose node 3 is the current submap, node 1 and node 2 are two history submaps with loop constraints with node 3, suppose node 1 and node 3 's transformation is already known (a stable registration)
                     Eigen::Matrix4d reference_pose_mat;      //the pose of the reference node (node 1), Tw1
                     Eigen::Matrix4d reference_loop_tran_mat; //the loop transformation of the reference node , T13
                     for (int j = 0; j < reg_edge_count; j++)
                     {
+                        // 只要找到几个可以成功配准的边即可
                         if (reg_edge_successful_count >= FLAGS_max_used_reg_edge_per_optimization) // we do not need too many registration edges (for example, more than 3 reg edges)
                             break;
                         pcTPtr cur_map_origin(new pcT()), cur_map_guess(new pcT()), cur_map_tran(new pcT()), hist_map(new pcT()), kp_guess(new pcT());
@@ -548,29 +550,32 @@ int main(int argc, char **argv)
                         current_registration_edges[j].block2->merge_feature_points(cur_map_origin, false);
                         current_registration_edges[j].block1->merge_feature_points(hist_map, false);
                         Eigen::Matrix4d init_mat = current_registration_edges[j].Trans1_2;
-                        if (stable_reg_found)                                                                                                  //infer the init guess according to a already successfully registered loop edge for current submap
+                        if (stable_reg_found)                                                                  //根据成功配准的边来推断初始估计 infer the init guess according to a already successfully registered loop edge for current submap
                             init_mat = current_registration_edges[j].block1->pose_lo.inverse() * reference_pose_mat * reference_loop_tran_mat; //T23 = T21 * T13 = T2w * Tw1 * T13
                         // global (coarse) registration by teaser or ransac (using ncc, bsc or fpfh as feature)
                         LOG(INFO) << "Transformation initial guess predicted by lidar odometry:\n"
                                   << init_mat;
                         bool global_reg_on = false;
+                        // 第一次是全局配准，后续若已经找到了稳定的配准，则不会进入下面的if中
                         if (!stable_reg_found && (current_registration_edges[j].overlapping_ratio > FLAGS_min_iou_thre_global_reg || overall_loop_searching_on)) //with higher overlapping ratio, try to TEASER
                         {
+                            // 利用ncc寻找特征点对应关系,对应的对分别在target_cor和source_cor中
                             creg.find_feature_correspondence_ncc(current_registration_edges[j].block1->pc_vertex, current_registration_edges[j].block2->pc_vertex,
                                                                  target_cor, source_cor, FLAGS_best_n_feature_match_on, FLAGS_feature_corr_num, FLAGS_reciprocal_feature_match_on);
                             int global_reg_status = -1;
+                            // 选择全局配准算法：teaser或是ransac,求得变换矩阵init_mat
                             if (FLAGS_teaser_based_global_registration_on)
                                 global_reg_status = creg.coarse_reg_teaser(target_cor, source_cor, init_mat, pca_neigh_r, FLAGS_global_reg_min_inlier_count);
                             else // using ransac, a bit slower than teaser
                                 global_reg_status = creg.coarse_reg_ransac(target_cor, source_cor, init_mat, pca_neigh_r, FLAGS_global_reg_min_inlier_count);
                             if (FLAGS_real_time_viewer_on)
                             {
-                                pcl::transformPointCloud(*source_cor, *kp_guess, init_mat);
+                                pcl::transformPointCloud(*source_cor, *kp_guess, init_mat);  //通过变换矩阵init_mat将source_cor转为kp_guess
                                 pcl::transformPointCloud(*cur_map_origin, *cur_map_guess, init_mat);
                                 mviewer.display_correspondences_compare(feature_viewer, source_cor, target_cor, kp_guess, cur_map_origin,
                                                                         hist_map, cur_map_guess, current_registration_edges[j].Trans1_2, 5);
                             }
-                            if (global_reg_status == 0) //double check
+                            if (global_reg_status == 0) //double check 根据配准算法得结果判断是否需要二次检测
                             {
                                 if (overall_loop_searching_on)
                                     global_reg_on = confinder.double_check_tran(init_mat, current_registration_edges[j].Trans1_2, init_mat, 10.0 * FLAGS_wrong_edge_tran_thre, 6.0 * FLAGS_wrong_edge_rot_thre_deg); //the difference tolerance can be a bit larger
@@ -592,7 +597,7 @@ int main(int argc, char **argv)
                         if (registration_status_map2map > 0)
                         {
                             pgo_edges.push_back(current_registration_edges[j]);
-                            reg_edge_successful_count++; //putable correctly registered registration edge
+                            reg_edge_successful_count++; //putable correctly registered registration edge 已正确配准的配准边数量
                             if (!stable_reg_found && FLAGS_transfer_correct_reg_tran_on)
                             {
                                 reference_pose_mat = current_registration_edges[j].block1->pose_lo; //the correct registered loop closure history node's pose
@@ -619,7 +624,7 @@ int main(int argc, char **argv)
                         pcT().swap(*cur_map_tran);
                         pcT().swap(*hist_map);
                     }
-                    if (reg_edge_successful_count > 0) //apply pose graph optimization (pgo) only when there's correctly registered registration edge
+                    if (reg_edge_successful_count > 0) //apply pose graph optimization (pgo) only when there's correctly registered registration edge  进行pgo
                     {
                         pgoptimizer.set_robust_function(FLAGS_robust_kernel_on);
                         pgoptimizer.set_equal_weight(FLAGS_equal_weight_on);
@@ -656,7 +661,7 @@ int main(int argc, char **argv)
         //4.点云scan to scan 位姿求解######################################################################
         if (FLAGS_scan_to_scan_module_on || i <= FLAGS_initial_scan2scan_frame_num)
         {
-            //为配准做点云准备
+            //为配准做点云准备（源点云和目标点云可以通过scan2scan_reg_con.xxx获得）
             creg.assign_source_target_cloud(cblock_target, cblock_source, scan2scan_reg_con);
 
             //使用不同的配准方法
@@ -688,10 +693,10 @@ int main(int argc, char **argv)
             }
             if (FLAGS_zupt_on_or_not)
                 nav.zupt_simple(scan2scan_reg_con.Trans1_2);
-            cblock_source->pose_lo = cblock_target->pose_lo * scan2scan_reg_con.Trans1_2;
+            cblock_source->pose_lo = cblock_target->pose_lo * scan2scan_reg_con.Trans1_2;  // T_source(lo) = T_target(lo) * T_target_source
             LOG(INFO) << "scan to scan registration done\nframe [" << i - 1 << "] - [" << i << "]:\n"
                       << scan2scan_reg_con.Trans1_2;
-            initial_guess_tran = scan2scan_reg_con.Trans1_2;
+            initial_guess_tran = scan2scan_reg_con.Trans1_2;  //相比于scan to map，多了这一步,因为scan to scan是source和target之间进行的
         }
 
 
@@ -731,8 +736,8 @@ int main(int argc, char **argv)
             LOG(INFO) << "scan to map registration done\nframe [" << i << "]:\n"
                       << scan2map_reg_con.Trans1_2;
         }//end scan to map
-        adjacent_pose_out = cblock_source->pose_lo.inverse() * cblock_target->pose_lo; //adjacent_pose_out is the transformation from k to k+1 frame (T2_1)
-
+        adjacent_pose_out = cblock_source->pose_lo.inverse() * cblock_target->pose_lo; //adjacent_pose_out is the transformation from k to k+1 frame (T2_1)  
+                                                                                       // = T_source_x * T_x_target
 
 
 
@@ -816,9 +821,9 @@ int main(int argc, char **argv)
         else
             poses_gt_lidar_cs.push_back(cblock_source->pose_gt);
         poses_lo_body_cs.push_back(pose_lo_body_frame);
-        poses_lo_adjacent.push_back(adjacent_pose_out); //poses_lo_adjacent is the container of adjacent_pose_out
+        poses_lo_adjacent.push_back(adjacent_pose_out); //poses_lo_adjacent is the container of adjacent_pose_out 保存相邻两帧估计的变换矩阵值
 
-        //update initial guess
+        //update initial guess  这里是如何更新初始估计矩阵的？
         initial_guess_tran.setIdentity();
         if (initial_guess_mode == 1 && lo_status_healthy)
             initial_guess_tran.block<3, 1>(0, 3) = adjacent_pose_out.inverse().block<3, 1>(0, 3); //uniform motion model
@@ -897,7 +902,7 @@ int main(int argc, char **argv)
             {
                 cblock_frames[i]->id_in_strip = i;
                 cblock_frames[i]->pose_init = cblock_frames[i]->pose_lo;
-                if (i < cblock_frames.size() - 1)
+                if (i < cblock_frames.size() - 1)  //除了最后一帧
                 {
                     Eigen::Matrix4d tran_mat_12 = poses_lo_adjacent[i].inverse();
                     confinder.add_adjacent_constraint(cblock_frames, framewise_pgo_edges, tran_mat_12, i + 2);

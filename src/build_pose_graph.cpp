@@ -97,6 +97,7 @@ namespace lo
 		return true;
 	}
 
+	// 保留可靠的约束，将不可靠的约束标记为历史或则删除
 	bool Constraint_Finder::cancel_registration_constraint(constraints &cons)
 	{
 		int con_count = cons.size();
@@ -132,7 +133,7 @@ namespace lo
 		int count_reg_edge = 0;
 		int cur_id = blocks.size() - 1;
 
-		if (search_neighbor_2d) //2D: x,y
+		if (search_neighbor_2d) //2D: x,y 在二维的空间内搜索邻域
 		{
 			pcl::PointCloud<pcl::PointXY>::Ptr cp_cloud(new pcl::PointCloud<pcl::PointXY>());
 
@@ -141,19 +142,19 @@ namespace lo
 				pcl::PointXY cp;
 				cp.x = blocks[i]->pose_lo(0, 3);
 				cp.y = blocks[i]->pose_lo(1, 3);
-				cp_cloud->push_back(cp);
+				cp_cloud->push_back(cp);  //cp_cloud是除了最后一个block前面所有block的平移向量的x,y坐标组成的
 			}
 
 			pcl::KdTreeFLANN<pcl::PointXY> kdtree;
 			kdtree.setInputCloud(cp_cloud);
 
-			pcl::PointXY cp_search;
+			pcl::PointXY cp_search; //最后一个block
 			cp_search.x = blocks[cur_id]->pose_lo(0, 3);
 			cp_search.y = blocks[cur_id]->pose_lo(1, 3);
 
-			kdtree.radiusSearch(cp_search, neighbor_radius, pointIdx, pointSquaredDistance, max_neighbor);
+			kdtree.radiusSearch(cp_search, neighbor_radius, pointIdx, pointSquaredDistance, max_neighbor);  //在cp_cloud中搜索离cp_search最近的，索引保存到pointIdx
 		}
-		else //3D: x,y,z
+		else //3D: x,y,z 在三维的空间内搜索邻域
 		{
 			pcl::PointCloud<pcl::PointXYZ>::Ptr cp_cloud(new pcl::PointCloud<pcl::PointXYZ>());
 
@@ -179,14 +180,16 @@ namespace lo
 
 		for (int j = 0; j < pointIdx.size(); j++)
 		{
+			// iou为两个包围盒重叠区域占总区域的比例
 			double iou = calculate_iou(blocks[cur_id]->bound, blocks[pointIdx[j]]->bound); //use (global) bbx instead of (local) bbx
 
+			// 通过比较id_in_strip来判断是否相邻
 			bool is_adjacent = judge_adjacent_by_id(blocks[cur_id]->id_in_strip, blocks[pointIdx[j]]->id_in_strip, adjacent_id_thre);
 
 			if (!is_adjacent)
 				LOG(WARNING) << "IOU of candidate registration edge:" << iou;
 
-			//enough IoU of bbx and not adjacent blocks
+			//enough IoU of bbx and not adjacent blocks  重叠够大且block之间不相邻，则保存为成功配准的边
 			if ((!is_adjacent) && (iou > min_iou_thre))
 			{
 				constraint_t registration_con;

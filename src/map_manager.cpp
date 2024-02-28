@@ -25,20 +25,21 @@ bool MapManager::update_local_map(cloudblock_Ptr local_map, cloudblock_Ptr last_
 
     //float near_dist_thre = 0.03;
     CFilter<Point_T> cf;
-    //1.tran_target_map= 将local系下的点变换到当前帧
-    Eigen::Matrix4d tran_target_map; //from the last local_map to the target frame
-    tran_target_map = last_target_cblock->pose_lo.inverse() * local_map->pose_lo;
+    //1.tran_target_map= 将local系下的点变换到当前帧的变换矩阵
+    Eigen::Matrix4d tran_target_map; //from the last local_map to the target frame  T_target_map
+    tran_target_map = last_target_cblock->pose_lo.inverse() * local_map->pose_lo;   // =T_targt_lo * T_lo_map
    
 
     //to avoid building kd-tree twice , do the map based filtering at first before the transforming
     //2.将当前帧的特征点云变换到local map坐标系下
-    last_target_cblock->transform_feature(tran_target_map.inverse(), true, false);
+    last_target_cblock->transform_feature(tran_target_map.inverse(), true, false);    //  p_map= T_map_target * p_target 
     
     dynamic_dist_thre_max = max_(dynamic_dist_thre_max, dynamic_dist_thre_min + 0.1);
     LOG(INFO) << "Map based filtering range(m): (0, " << near_dist_thre << "] U [" << dynamic_dist_thre_min << "," << dynamic_dist_thre_max << "]";
 
     if (map_based_dynamic_removal_on && local_map->feature_point_num > max_num_pts / 5)
     {
+        // 动态物体滤除
         map_based_dynamic_close_removal(local_map, last_target_cblock, used_feature_type, dynamic_removal_center_radius,
                                         dynamic_dist_thre_min, dynamic_dist_thre_max, near_dist_thre);
 
@@ -58,7 +59,7 @@ bool MapManager::update_local_map(cloudblock_Ptr local_map, cloudblock_Ptr last_
 
     //we only use the undown (regarded as target) feature points for local map
     //4.将local map系下的点全部变换到当前帧坐标系下
-    local_map->transform_feature(tran_target_map, false);
+    local_map->transform_feature(tran_target_map, false);  //  p_target = T_target_map * p_map
     local_map->pose_lo = last_target_cblock->pose_lo;
     local_map->pose_gt = last_target_cblock->pose_gt;
 
@@ -283,11 +284,12 @@ bool MapManager::update_cloud_vectors(pcTPtr feature_pts, const pcTreePtr map_kd
 
     pca_estimator.get_pc_pca_feature(feature_pts, pca_features, pca_radius, pca_k, k_min);
 
-    for (int i = 0; i < feature_pts->points.size(); i++)
+    for (int i = 0; i < feature_pts->points.size(); i++)  //对所有特征点
     {
-        if (pca_features[i].pt_num >= k_min && pca_features[i].linear_2 > min_linearity)
+        if (pca_features[i].pt_num >= k_min && pca_features[i].linear_2 > min_linearity)  //当周围邻域内点的数量够多且线性度够大
         {
             pca_estimator.assign_normal(feature_pts->points[i], pca_features[i], false);
+            // 特征点的法线方向的 z 分量的绝对值大于 sin_high 或小于 sin_low，则将该特征点的曲率属性（原本可能是时间戳）设置为其线性度，然后将其添加到临时点云中
             if (std::abs(pca_features[i].vectors.principalDirection.z()) > sin_high || std::abs(pca_features[i].vectors.principalDirection.z()) < sin_low)
             {
                 feature_pts->points[i].curvature = pca_features[i].linear_2; //use the lineraity to overwrite the curvature property (originally timestamp) //TODO: fix
@@ -304,6 +306,7 @@ bool MapManager::update_cloud_vectors(pcTPtr feature_pts, const pcTreePtr map_kd
 
 // Divide the strip into several submaps according to multiple rules (judge if a new submap would be created)
 // Rules: consecutive frame number, accumulated translation (using), accumilated heading angle (using) ...
+// 连续帧数、累积的平移和旋转至少一个超过阈值时才创建新的子地图
 bool MapManager::judge_new_submap(float &accu_tran, float &accu_rot, int &accu_frame,
                                   float max_accu_tran, float max_accu_rot, int max_accu_frame)
 {

@@ -253,7 +253,7 @@ class CFilter : public CloudUtility<PointT>
 
 
 	//regenerate the calibrated point cloud (the intrinsic angle might be uncorrect)
-	//这个函数相当于对于点云(x,y,z)与原点相连的线段，对这条线与xoy平面的夹角而言，向z轴正方向在旋转var_vertical_ang_d度后获得的新点云
+	//这个函数相当于对于点云(x,y,z)与原点相连的线段，对这条线与xoy平面的夹角而言，向z轴正方向再旋转var_vertical_ang_d度后获得的新点云
 	bool vertical_intrinsic_calibration(typename pcl::PointCloud<PointT>::Ptr &cloud_in_out, double var_vertical_ang_d = 0.0, bool inverse_z = false) //inverse_z is for PANDAR XT Lidar
 	{
 		if (var_vertical_ang_d == 0)
@@ -416,7 +416,7 @@ class CFilter : public CloudUtility<PointT>
 		return true;
 	}
 
-    //得到点云在一帧中的时间百分比
+    //得到点云在一帧中的时间百分比，保存在curvature中（后面畸变矫正会用到）
     //第一种方式根据时间戳，第二种方式根据角度
 	bool get_pts_timestamp_ratio_in_frame(typename pcl::PointCloud<PointT>::Ptr &cloud_in_out,
 										  bool timestamp_availiable = true,
@@ -475,13 +475,14 @@ class CFilter : public CloudUtility<PointT>
 		}
 	}
 
+	//知道两帧之间的相对位姿，并且知道每个激光点的时间戳，利用slerp函数进行畸变矫正
 	//already get the timestamp ratio (stored as curvature) using get_pts_timestamp_ratio_in_frame function
 	void apply_motion_compensation(typename pcl::PointCloud<PointT>::Ptr pc_in_out, Eigen::Matrix4d &Tran, float s_ambigous_thre = 0.000)
 	{
-		Eigen::Vector3d estimated_translation_2_1 = Tran.block<3, 1>(0, 3);
+		Eigen::Vector3d estimated_translation_2_1 = Tran.block<3, 1>(0, 3);  //从第一行第四列开始提取一个3*1的子矩阵(平移向量)
 		Eigen::Quaterniond d_quat, estimated_quat2_1;
 		Eigen::Vector3d d_translation;
-		estimated_quat2_1 = Eigen::Quaterniond(Tran.block<3, 3>(0, 0));
+		estimated_quat2_1 = Eigen::Quaterniond(Tran.block<3, 3>(0, 0));    //旋转矩阵转为四元数
 
 		omp_set_num_threads(min_(6, omp_get_max_threads()));
 #pragma omp parallel for //Multi-thread
@@ -490,7 +491,7 @@ class CFilter : public CloudUtility<PointT>
 			if (pc_in_out->points[i].curvature < s_ambigous_thre || pc_in_out->points[i].curvature > 1.0 - s_ambigous_thre) //curvature as the timestamp
 				continue;
 			d_quat = Eigen::Quaterniond::Identity().slerp(pc_in_out->points[i].curvature, estimated_quat2_1); //Spherical linear interpolation (slerp) for quaternion
-			d_translation = pc_in_out->points[i].curvature * estimated_translation_2_1;
+			d_translation = pc_in_out->points[i].curvature * estimated_translation_2_1;  //vector3d类型
 			Eigen::Vector3d temp_point(pc_in_out->points[i].x, pc_in_out->points[i].y, pc_in_out->points[i].z);
 			Eigen::Vector3d undistort_point = d_quat * temp_point + d_translation;
 			pc_in_out->points[i].x = undistort_point(0);
@@ -499,8 +500,6 @@ class CFilter : public CloudUtility<PointT>
 		}
 	}
 
-    //Tran = 两帧之间的位姿变换
-    //知道两帧之间的相对位姿，并且知道每个激光点的时间戳，利用slerp函数进行畸变矫正
 	void apply_motion_compensation(const typename pcl::PointCloud<PointT>::Ptr pc_in, typename pcl::PointCloud<PointT>::Ptr pc_out,
 								   Eigen::Matrix4d &Tran, float s_ambigous_thre = 0.0)
 	{
@@ -514,6 +513,7 @@ class CFilter : public CloudUtility<PointT>
 #pragma omp parallel for //Multi-thread
 		for (int i = 0; i < pc_in->points.size(); i++)
 		{
+			// 防止时间戳异常
 			if (pc_in->points[i].curvature < s_ambigous_thre || pc_in->points[i].curvature > 1.0 - s_ambigous_thre) //curvature as the timestamp
 				continue;
 			d_quat = Eigen::Quaterniond::Identity().slerp(pc_in->points[i].curvature, estimated_quat2_1); //Spherical linear interpolation (slerp) for quaternion
@@ -532,7 +532,7 @@ class CFilter : public CloudUtility<PointT>
 										 typename pcl::PointCloud<PointT>::Ptr pc_roof, typename pcl::PointCloud<PointT>::Ptr pc_vertex,
 										 Eigen::Matrix4d &Tran, bool undistort_keypoints_or_not = false)
 	{
-        //根据每个点的时间戳，对点进行畸变矫正
+        
 		apply_motion_compensation(pc_ground, Tran);
 		apply_motion_compensation(pc_pillar, Tran);
 		apply_motion_compensation(pc_beam, Tran);
@@ -551,6 +551,7 @@ class CFilter : public CloudUtility<PointT>
 										 typename pcl::PointCloud<PointT>::Ptr pc_roof_undistort, typename pcl::PointCloud<PointT>::Ptr pc_vertex_undistort,
 										 Eigen::Matrix4d &Tran, bool undistort_keypoints_or_not = false)
 	{
+		//根据每个点的时间戳，对点进行畸变矫正
 		apply_motion_compensation(pc_ground, pc_ground_undistort, Tran);
 		apply_motion_compensation(pc_pillar, pc_pillar_undistort, Tran);
 		apply_motion_compensation(pc_beam, pc_beam_undistort, Tran);
@@ -723,6 +724,7 @@ class CFilter : public CloudUtility<PointT>
 		}
 	}
 
+	//每隔几个点采样一个点
 	bool random_downsample(const typename pcl::PointCloud<PointT>::Ptr &cloud_in,
 						   typename pcl::PointCloud<PointT>::Ptr &cloud_out, int downsample_ratio)
 	{
@@ -740,7 +742,6 @@ class CFilter : public CloudUtility<PointT>
 			return 0;
 	}
 
-    //每隔几个点采样一个点
 	bool random_downsample(typename pcl::PointCloud<PointT>::Ptr &cloud_in_out, int downsample_ratio)
 	{
 		typename pcl::PointCloud<PointT>::Ptr cloud_temp(new pcl::PointCloud<PointT>);
@@ -1180,7 +1181,7 @@ class CFilter : public CloudUtility<PointT>
 				facade_far_count = 100 * facade_far_count / neighbor_total_count;
 				roof_far_count = 100 * roof_far_count / neighbor_total_count;
 
-                //根据周围点 各个特殊点的占用百分比来生成描述子(生成一个8位数，从左往右，没两个数是比例)
+                //根据周围点 各个特殊点的占用百分比来生成描述子(生成一个8位数，从左往右，每两个数是比例)
 				int descriptor = pillar_count * 1000000 + beam_count * 10000 + facade_count * 100 + roof_count; //the neighborhood discriptor (8 numbers)
 				int descriptor_1 = pillar_close_count * 1000000 + beam_close_count * 10000 + facade_close_count * 100 + roof_close_count;
 				int descriptor_2 = pillar_far_count * 1000000 + beam_far_count * 10000 + facade_far_count * 100 + roof_far_count;
@@ -1300,7 +1301,7 @@ class CFilter : public CloudUtility<PointT>
 			int id;
 			iterUnseg = unVisitedPtId.begin();
 			id = *iterUnseg;
-			cloud_out->points.push_back(cloud_in->points[id]);
+			cloud_out->points.push_back(cloud_in->points[id]); //输出
 			unVisitedPtId.erase(id);
 
 			float non_max_radius = nms_radius;
@@ -1683,7 +1684,7 @@ class CFilter : public CloudUtility<PointT>
 	// -------------------------------------------------------------------------------------------------------------------//
 	bool fast_ground_filter(const typename pcl::PointCloud<PointT>::Ptr &cloud_in,
 							typename pcl::PointCloud<PointT>::Ptr &cloud_ground,//地面点
-							typename pcl::PointCloud<PointT>::Ptr &cloud_ground_down,//降才采样之后的地面点
+							typename pcl::PointCloud<PointT>::Ptr &cloud_ground_down,//下采样之后的地面点
 							typename pcl::PointCloud<PointT>::Ptr &cloud_unground,//非地面点
 							typename pcl::PointCloud<PointT>::Ptr &cloud_curb,//废弃了不再使用
 							int min_grid_pt_num, float grid_resolution, float max_height_difference,
@@ -1997,8 +1998,8 @@ class CFilter : public CloudUtility<PointT>
 			if (!fixed_num_downsampling)
 			{
 				//LOG(INFO)<<cloud_ground->points[i].normal_x << "," << cloud_ground->points[i].normal_y << "," << cloud_ground->points[i].normal_z;
-				if (i % ground_random_down_down_rate == 0)
-					cloud_ground_down->points.push_back(cloud_ground->points[i]);
+				if (i % ground_random_down_down_rate == 0)  //下采样
+					cloud_ground_down->points.push_back(cloud_ground->points[i]); 
 			}
 		}
 
@@ -2007,7 +2008,7 @@ class CFilter : public CloudUtility<PointT>
 
 		pcl::PointCloud<pcl::Normal>().swap(*ground_normal);
 
-        //just use for debug  (可学习：利用各模块消耗的时间来debug)
+        //just use for debug  (利用各模块消耗的时间来debug)
 		std::chrono::steady_clock::time_point toc_3 = std::chrono::steady_clock::now();
 		std::chrono::duration<double> ground_seg_time = std::chrono::duration_cast<std::chrono::duration<double>>(toc_2 - tic);
 		std::chrono::duration<double> ground_seg_prepare_time = std::chrono::duration_cast<std::chrono::duration<double>>(toc_1 - tic);
@@ -2122,7 +2123,7 @@ class CFilter : public CloudUtility<PointT>
 
 		std::chrono::steady_clock::time_point tic = std::chrono::steady_clock::now();
 
-		if (fixed_num_downsampling)  //默认进入这个if语句随机下采样
+		if (fixed_num_downsampling)  //默认不进去
 			random_downsample_pcl(cloud_in, unground_down_fixed_num);
 
 		//Do PCA
@@ -2146,7 +2147,7 @@ class CFilter : public CloudUtility<PointT>
 		// 分别是柱，梁，立面，屋顶
 		for (int i = 0; i < cloud_in->points.size(); i++)
 		{
-			if (cloud_features[i].pt_num > neigh_k_min)//后面所有的代码都在这个if下，离群点不对他归类
+			if (cloud_features[i].pt_num > neigh_k_min)//后面所有的代码都在这个if下，离群点不对他归类(pt_num：该点k近邻的个数，小于等于k)
 			{
 
 				if (cloud_features[i].linear_2 > edge_thre)
@@ -2313,7 +2314,7 @@ class CFilter : public CloudUtility<PointT>
 
 		std::chrono::steady_clock::time_point toc_3 = std::chrono::steady_clock::now();
         //3.2.对cloud_facade cloud_beam_down cloud_roof_down 将点云分成不同sector，然后在sector中进行随机采样
-		if (fixed_num_downsampling)
+		if (fixed_num_downsampling)  //默认不进去
 		{
 			random_downsample_pcl(cloud_pillar_down, pillar_down_fixed_num);
 			int sector_num = 4;
@@ -2384,7 +2385,7 @@ class CFilter : public CloudUtility<PointT>
 
 		//with semantic mask
 		//remove dynamic objects and outliers (underground ghost points) using the semantic mask predicted by neural network
-        //默认不进入个条件,根据感知的结果删除动态点云
+        //默认不进入这个条件,根据感知的结果删除动态点云
 		if (semantic_assisted)
 			filter_with_dynamic_object_mask_pre(in_block->pc_raw);
 		else if (apply_scanner_filter)//默认不进入这个条件
@@ -2686,7 +2687,7 @@ class CFilter : public CloudUtility<PointT>
 									 typename pcl::PointCloud<PointT>::Ptr &pc_vertex_sc,
 									 bool use_more_points = false)
 	{
-		bbx_filter(pc_ground_tc, intersection_bbx);
+		bbx_filter(pc_ground_tc, intersection_bbx);//滤除不在包围盒的点云
 		bbx_filter(pc_pillar_tc, intersection_bbx);
 		bbx_filter(pc_beam_tc, intersection_bbx);
 		bbx_filter(pc_facade_tc, intersection_bbx);

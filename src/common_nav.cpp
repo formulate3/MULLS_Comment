@@ -6,6 +6,7 @@ namespace lo
     //对tz赋值为0
     bool Navigation::zupt_simple(Eigen::Matrix4d &Trans, float stop_hor_dis_thre, float fix_hor_dis_thre)
     {
+        // 为x和y方向上距离进行开平方，最后将z方向上的距离置为0
         float hor_displacement = std::sqrt(Trans(0, 3) * Trans(0, 3) + Trans(1, 3) * Trans(1, 3));
         // if (hor_displacement < stop_hor_dis_thre)
         // {
